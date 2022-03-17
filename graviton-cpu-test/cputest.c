@@ -25,6 +25,14 @@ int use_cpu = 1;
 //使用的测试方法
 int use_method = 0;
 
+#ifdef __aarch64__
+    #define SYS "aarch64"
+#elif defined(__x86_64__)
+    #define SYS "x86_64"
+#else
+    #define SYS "unknown"
+#endif
+
 typedef struct _cpu_info
 {
     char name[20];
@@ -195,9 +203,9 @@ int main(int argc, char *argv[]) {
                 sum*1.0/count/test_thread,
                 cpurate);
     }
-    printf("mode-%d-%s-%d,%d,%.2f,%.2f\n",
-        use_method, method_name[use_method], use_cpu, test_thread
-        ,sum*1.0/count/test_thread, cpurate);
+    printf("mode-%s-%d-%s-%d,%d,%.2f,%.2f\n",
+        SYS, use_method, method_name[use_method], use_cpu, test_thread,
+        sum*1.0/count/test_thread, cpurate);
     close(pipes[0]);
     close(pipes[1]);
 }
