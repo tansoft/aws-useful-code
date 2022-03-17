@@ -8,14 +8,22 @@
 #include <pthread.h>
 #include <sched.h>
 
+//总共循环次数
+#define TEST_COUNT 50
 //每次测试循环次数
-#define TEST_COUNT 10000
+#define TEST_PRE_COUNT 10000
+//开始使用的核索引，从0开始
+#define START_CPU_INDEX 2
+//最多测试的cpu核数
+#define MAX_CPU 64
 //用于上报数据的管道
 int pipes[2];
 //测试线程数
 int test_thread = 0;
-//使用cpu个数，1和2
+//使用cpu核数
 int use_cpu = 1;
+//使用的测试方法
+int use_method = 0;
 
 typedef struct _cpu_info
 {
@@ -76,8 +84,8 @@ void set_use_cpu(int start, int count) {
     cpu_set_t cpuset;
     pthread_t tid = pthread_self();
     CPU_ZERO(&cpuset);
-    for(int i=start;i<=count;i++) {
-        CPU_SET(i, &cpuset);
+    for(int i=0; i<count; i++) {
+        CPU_SET(i + start, &cpuset);
     }
     if (pthread_setaffinity_np(tid, sizeof(cpu_set_t), &cpuset) != 0) {
         printf("set addinity error\n");
@@ -85,20 +93,35 @@ void set_use_cpu(int start, int count) {
     }
 }
 
-void *_test(void *arg)
-{
+void method0_inc() {
     int a=0;
+    for(int i=0;i<TEST_PRE_COUNT;i++) {
+        a+=1;
+        //sleep可以引起线程切换
+        usleep(1);
+    }
+}
+
+void method1_memcpy() {
+    static char membuf[TEST_PRE_COUNT] = {0};
+    char distbuf[TEST_PRE_COUNT];
+    for(int i=0;i<TEST_PRE_COUNT;i++) {
+        memcpy(distbuf, membuf+i, TEST_PRE_COUNT-i);
+    }
+}
+
+typedef void (*method_function)();
+method_function methods[] = {method0_inc, method1_memcpy};
+char method_name[][10] = {"inc", "memcpy"};
+
+void *_test(void *arg) {
     int usec;
     struct timeval start, end;
-    //固定使用cpu2开始的n个cpu
-    set_use_cpu(1, use_cpu);
+    //固定使用index开始的n个cpu
+    set_use_cpu(START_CPU_INDEX, use_cpu);
     while(1) {
         gettimeofday(&start, NULL);
-        for(int i=0;i<TEST_COUNT;i++) {
-            a+=1;
-            //sleep可以引起线程切换
-            usleep(1);
-        }
+        methods[use_method]();
         gettimeofday(&end, NULL);
         usec = (1000000*(end.tv_sec-start.tv_sec)+ end.tv_usec-start.tv_usec);
         if(write(pipes[1],&usec,sizeof(int))==-1) exit(1);
@@ -106,17 +129,17 @@ void *_test(void *arg)
     return NULL;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int i,usec;
     long sum = 0;
     long count = 0;
     pthread_t tid;
-    cpu_info_t info1[2];
-    cpu_info_t info2[2];
+    cpu_info_t sinfo[MAX_CPU];
+    cpu_info_t einfo[MAX_CPU];
+    double cpurate;
 
     if (argc < 2) {
-        printf("usage: threadtest <thread_count> <use_cpu>\n");
+        printf("usage: threadtest <thread_count> <use_cpu> <use_method>\n");
         return 1;
     }
     test_thread = atoi(argv[1]);
@@ -126,12 +149,20 @@ int main(int argc, char *argv[])
     }
     if (argc > 2) {
         use_cpu = atoi(argv[2]);
-        if (use_cpu != 2 && use_cpu != 1) {
-            printf("The value of use_cpu should be only 1 or 2\n");
+        if (use_cpu < 1 || use_cpu > MAX_CPU) {
+            printf("The value of use_cpu should be between 1 - %d\n", MAX_CPU);
             return 1;
         }
+        if (argc > 3) {
+            int method_count = sizeof(methods)/sizeof(method_function);
+            use_method = atoi(argv[3]);
+            if (use_method < 0 || use_method >= method_count) {
+                printf("The value of use_method should be between 0 - %d\n", method_count-1);
+                return 1;
+            }
+        }
     }
-    printf("test %d cpus with %d threads\n", use_cpu, test_thread);
+    printf("method %d-%s: test %d cpus with %d threads\n", use_method, method_name[use_method], use_cpu, test_thread);
 
     if(pipe(pipes)<0) {
         exit(1);
@@ -144,29 +175,29 @@ int main(int argc, char *argv[])
     usleep(500000);
     set_use_cpu(0, 1);
 
-    get_cpu_occupy(1, &info1[0]);
-    get_cpu_occupy(2, &info2[0]);
-    while(count<100) {
+    for(i=0;i<use_cpu;i++) {
+        get_cpu_occupy(START_CPU_INDEX+i, &sinfo[i]);
+    }
+    while(count<TEST_PRE_COUNT) {
         for(i=0;i<test_thread;i++) {
             read(pipes[0],&usec,sizeof(int));
             sum+=usec;
         }
         count++;
-        get_cpu_occupy(1, &info1[1]);
-        if (use_cpu == 1) {
-            printf("threads: %d times: %d speed: %6.2fus cpu:%6.2f%%\n",
-                test_thread, count,
-                sum*1.0/count/test_thread,
-                calc_cpu_rate(&info1[0], &info1[1]));
-        } else {
-            get_cpu_occupy(2, &info2[1]);
-            printf("threads: %d times: %d speed: %6.2fus cpu:%6.2f%% %4.2f%%\n",
-                test_thread, count,
-                sum*1.0/count/test_thread,
-                calc_cpu_rate(&info1[0], &info1[1]),
-                calc_cpu_rate(&info2[0], &info2[1]));
+        cpurate = 0.0;
+        for(i=0;i<use_cpu;i++) {
+            get_cpu_occupy(START_CPU_INDEX+i, &einfo[i]);
+            cpurate += calc_cpu_rate(&sinfo[i], &einfo[i]);
         }
+        cpurate /= use_cpu;
+        printf("threads: %d times: %d speed: %6.2fus cpu:%6.2f%%\n",
+                test_thread, count,
+                sum*1.0/count/test_thread,
+                cpurate);
     }
+    printf("mode-%d-%s-%d,%d,%.2f,%.2f\n",
+        use_method, method_name[use_method], use_cpu, test_thread
+        ,sum*1.0/count/test_thread, cpurate);
     close(pipes[0]);
     close(pipes[1]);
 }
