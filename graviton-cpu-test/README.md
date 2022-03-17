@@ -73,7 +73,7 @@ for i in 1 2 3 4 5 10 15 20 25 30 40 50 60 70 80 90; do ./cputest $i 2 1; done |
 
 横坐标是压测的线程数
 
-![测试结论](benchmark.png)
+![测试结论](compare.png)
 
 #### 原始数据
 
