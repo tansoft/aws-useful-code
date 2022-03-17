@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
     for(i=0;i<use_cpu;i++) {
         get_cpu_occupy(START_CPU_INDEX+i, &sinfo[i]);
     }
-    while(count<TEST_PRE_COUNT) {
+    while(count<TEST_COUNT) {
         for(i=0;i<test_thread;i++) {
             read(pipes[0],&usec,sizeof(int));
             sum+=usec;
