@@ -13,7 +13,7 @@
 //每次测试循环次数
 #define TEST_PRE_COUNT 10000
 //开始使用的核索引，从0开始
-#define START_CPU_INDEX 2
+#define START_CPU_INDEX 0
 //最多测试的cpu核数
 #define MAX_CPU 64
 //用于上报数据的管道
@@ -145,6 +145,7 @@ int main(int argc, char *argv[]) {
     cpu_info_t sinfo[MAX_CPU];
     cpu_info_t einfo[MAX_CPU];
     double cpurate;
+    int cpucount;
 
     if (argc < 2) {
         printf("usage: threadtest <thread_count> <use_cpu> <use_method>\n");
@@ -155,10 +156,15 @@ int main(int argc, char *argv[]) {
         printf("The value of thread_count should be greater than 2\n");
         return 1;
     }
+    cpucount = sysconf(_SC_NPROCESSORS_ONLN);
     if (argc > 2) {
         use_cpu = atoi(argv[2]);
         if (use_cpu < 1 || use_cpu > MAX_CPU) {
             printf("The value of use_cpu should be between 1 - %d\n", MAX_CPU);
+            return 1;
+        }
+        if (use_cpu > cpucount) {
+            printf("This system has only %d CPUs, use_cpu setting must be less than or equal to this value\n", cpucount);
             return 1;
         }
         if (argc > 3) {
@@ -181,7 +187,8 @@ int main(int argc, char *argv[]) {
         pthread_create(&tid, NULL, _test, NULL);
     }
     usleep(500000);
-    set_use_cpu(0, 1);
+    //主线程指定为最后一个cpu
+    set_use_cpu(cpucount-1, 1);
 
     for(i=0;i<use_cpu;i++) {
         get_cpu_occupy(START_CPU_INDEX+i, &sinfo[i]);
