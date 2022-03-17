@@ -36,6 +36,10 @@ bash -c "./cputest 1 2 && ./cputest 2 2 && ./cputest 3 2 && ./cputest 4 2 && ./c
 
 ```
 
+测试过程可以通过htop观察，单核测试CPU会集中在CPU2上，双核测试CPU会集中在CPU2和CPU3上
+
+![CPU负载情况](cpuinfo.png)
+
 ## 测试结论
 
 ![测试结论](benchmark.png)
