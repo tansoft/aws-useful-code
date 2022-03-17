@@ -102,7 +102,7 @@ void set_use_cpu(int start, int count) {
 }
 
 void method0_inc() {
-    int a=0;
+    static int a=0;
     for(int i=0;i<TEST_PRE_COUNT;i++) {
         a+=1;
         //sleep可以引起线程切换
