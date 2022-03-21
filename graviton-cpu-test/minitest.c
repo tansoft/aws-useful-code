@@ -91,5 +91,5 @@ int main(int argc, char *argv[]) {
     get_cpu_occupy(0, &st);
     sleep(10);
     get_cpu_occupy(0, &et);
-    printf("threads: %d, cpu: %.2f%%\n", test_thread, calc_cpu_rate(&st, &et));
+    printf("%d,%.2f%%\n", test_thread, calc_cpu_rate(&st, &et));
 }
