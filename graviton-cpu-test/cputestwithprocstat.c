@@ -62,7 +62,7 @@ typedef struct _process_info
 }process_info_t;
 
 //Get the process stat
-int get_process_occupy(int cpu_index,process_info_t* info)
+int get_process_occupy(process_info_t* info)
 {
     FILE* fp = NULL;
     char key[20] = {0};
