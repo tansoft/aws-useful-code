@@ -73,7 +73,7 @@ void *_test(void *arg) {
     double a=0;
     int i=0;
     set_use_cpu(0);
-    while(i<10000) {
+    while(i<1000000) {
         for(int i=0;i<100;i++) {
             a+=1;
         }
