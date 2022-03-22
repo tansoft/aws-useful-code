@@ -1,3 +1,9 @@
+/*
+wget https://raw.githubusercontent.com/tansoft/aws-poc/main/graviton-cpu-test/minirun.c
+gcc -lpthread minirun.c -O0 -o minirun
+for i in {1..40}; do ./minirun $i; done
+*/
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,10 +26,8 @@ void set_use_cpu(int start) {
 void *_test(void *arg) {
     double a=0;
     set_use_cpu(0);
-    while(1) {
-        for(int i=0;i<1000000;i++) {
-            a+=1;
-        }
+    for(int i=0;i<10000000;i++) {
+        a+=1;
     }
     return NULL;
 }
