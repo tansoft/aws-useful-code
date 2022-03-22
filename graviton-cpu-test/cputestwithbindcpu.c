@@ -148,9 +148,31 @@ int main(int argc, char *argv[]) {
     double cpurate;
     int cpucount;
 
-    test_thread = 3;
+    test_thread = atoi(argv[1]);
+    if (test_thread < 1) {
+        printf("The value of thread_count should be greater than 2\n");
+        return 1;
+    }
     cpucount = sysconf(_SC_NPROCESSORS_ONLN);
-    use_cpu = 3;
+    if (argc > 2) {
+        use_cpu = atoi(argv[2]);
+        if (use_cpu < 1 || use_cpu > MAX_CPU) {
+            printf("The value of use_cpu should be between 1 - %d\n", MAX_CPU);
+            return 1;
+        }
+        if (use_cpu > cpucount) {
+            printf("This system has only %d CPUs, use_cpu setting must be less than or equal to this value\n", cpucount);
+            return 1;
+        }
+        if (argc > 3) {
+            int method_count = sizeof(methods)/sizeof(method_function);
+            use_method = atoi(argv[3]);
+            if (use_method < 0 || use_method >= method_count) {
+                printf("The value of use_method should be between 0 - %d\n", method_count-1);
+                return 1;
+            }
+        }
+    }
     printf("method %d-%s: test %d cpus with %d threads\n", use_method, method_name[use_method], use_cpu, test_thread);
 
     if(pipe(pipes)<0) {
@@ -159,7 +181,7 @@ int main(int argc, char *argv[]) {
 
     //init
     for(i=0;i<test_thread;i++){
-        pthread_create(&tid, NULL, _test, (void *)i);
+        pthread_create(&tid, NULL, _test, (void *)(i%cpucount));
     }
     usleep(500000);
     //主线程指定为最后一个cpu
