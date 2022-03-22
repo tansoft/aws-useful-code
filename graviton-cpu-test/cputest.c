@@ -8,21 +8,21 @@
 #include <pthread.h>
 #include <sched.h>
 
-//总共循环次数
+//Total sampling times
 #define TEST_COUNT 50
-//每次测试循环次数
+//Number of test cycles per test
 #define TEST_PRE_COUNT 10000
-//开始使用的核索引，从0开始
+//Vcpu index to start using, start from index 0
 #define START_CPU_INDEX 0
-//最多测试的cpu核数
+//max test vCPUs
 #define MAX_CPU 64
-//用于上报数据的管道
+//Pipeline for reporting data
 int pipes[2];
-//测试线程数
+//Number of test threads
 int test_thread = 0;
-//使用cpu核数
+//Number of test vCPUs
 int use_cpu = 1;
-//使用的测试方法
+//Use test method
 int use_method = 0;
 
 #ifdef __aarch64__
@@ -45,7 +45,7 @@ typedef struct _cpu_info
     unsigned int softirq;
 }cpu_info_t;
 
-//获取某个cpu的负载
+//Get the CPU stat
 int get_cpu_occupy(int cpu_index,cpu_info_t* info)
 {
     FILE* fp = NULL;
@@ -68,7 +68,7 @@ int get_cpu_occupy(int cpu_index,cpu_info_t* info)
     return ret;
 }
 
-//计算cpu的使用率
+//Calculate CPU utilization
 double calc_cpu_rate(cpu_info_t* old_info, cpu_info_t* new_info)
 {
     double od, nd;
@@ -87,7 +87,8 @@ double calc_cpu_rate(cpu_info_t* old_info, cpu_info_t* new_info)
     return 0;
 }
 
-//设置该线程使用哪个cpu，start是起始cpu索引，从0开始，count是连续使用多少个cpu
+//Set which vCPU used by the thread. start: is the index of the begin range of vCPU, start form 0. count: is the number of vCPUs used continuously
+//e.g. set_use_cpu(2, 3) => use vCPU2 vCPU3 vCPU4 together
 void set_use_cpu(int start, int count) {
     cpu_set_t cpuset;
     pthread_t tid = pthread_self();
@@ -102,10 +103,10 @@ void set_use_cpu(int start, int count) {
 }
 
 void method0_inc() {
-    static int a=0;
+    static double a=0;
     for(int i=0;i<TEST_PRE_COUNT;i++) {
         a+=1;
-        //sleep可以引起线程切换
+        //usleep can cause thread switching
         usleep(1);
     }
 }
@@ -125,13 +126,14 @@ char method_name[][10] = {"inc", "memcpy"};
 void *_test(void *arg) {
     int usec;
     struct timeval start, end;
-    //固定使用index开始的n个cpu
+    //Fixed use 'use_cpu' CPUs starting with START_CPU_INDEX
     set_use_cpu(START_CPU_INDEX, use_cpu);
     while(1) {
         gettimeofday(&start, NULL);
         methods[use_method]();
         gettimeofday(&end, NULL);
         usec = (1000000*(end.tv_sec-start.tv_sec)+ end.tv_usec-start.tv_usec);
+        //Send the execution time to the main thread for statistics
         if(write(pipes[1],&usec,sizeof(int))==-1) exit(1);
     }
     return NULL;
@@ -182,18 +184,20 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    //init
+    //init threads
     for(i=0;i<test_thread;i++){
         pthread_create(&tid, NULL, _test, NULL);
     }
+    //sleep for 500ms to make the thread run stably
     usleep(500000);
-    //主线程指定为最后一个cpu
+    //The main thread uses the last CPU to avoid affecting the test in thread
     set_use_cpu(cpucount-1, 1);
 
     for(i=0;i<use_cpu;i++) {
         get_cpu_occupy(START_CPU_INDEX+i, &sinfo[i]);
     }
     while(count<TEST_COUNT) {
+        //Get the time-consuming results sent by each thread
         for(i=0;i<test_thread;i++) {
             read(pipes[0],&usec,sizeof(int));
             sum+=usec;
@@ -210,6 +214,7 @@ int main(int argc, char *argv[]) {
                 sum*1.0/count/test_thread,
                 cpurate);
     }
+    //printing average use time and average CPU utilization
     printf("mode-%s-%d-%s-%d,%d,%.2f,%.2f\n",
         SYS, use_method, method_name[use_method], use_cpu, test_thread,
         sum*1.0/count/test_thread, cpurate);
