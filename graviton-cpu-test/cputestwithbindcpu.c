@@ -124,7 +124,7 @@ char method_name[][10] = {"inc", "memcpy"};
 
 void *_test(void *arg) {
     int usec;
-    int i=(int)arg;
+    int i=(int)(long)arg;
     struct timeval start, end;
     //固定使用index开始的n个cpu
     set_use_cpu(i, 1);
@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
 
     //init
     for(i=0;i<test_thread;i++){
-        pthread_create(&tid, NULL, _test, (void *)(i%cpucount));
+        pthread_create(&tid, NULL, _test, (void *)(long)(i%use_cpu));
     }
     usleep(500000);
     //主线程指定为最后一个cpu
