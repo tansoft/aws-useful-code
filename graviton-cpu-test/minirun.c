@@ -30,16 +30,15 @@ void *_test(void *arg) {
 
 int main(int argc, char *argv[]) {
     pthread_t tid[100];
-    cpu_info_t st,et;
     struct timeval start, end;
     int i, usec;
     int test_thread = atoi(argv[1]);
     for(i=0;i<test_thread;i++){
         pthread_create(&tid[i], NULL, _test, NULL);
     }
-    set_use_cpu(1, 1);
+    set_use_cpu(1);
     gettimeofday(&start, NULL);
-    for(i=0;t<test_thread;i++) {
+    for(i=0;i<test_thread;i++) {
         pthread_join(tid[i], NULL);
     }
     gettimeofday(&end, NULL);
