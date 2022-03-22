@@ -69,13 +69,13 @@ void set_use_cpu(int start) {
 }
 
 void *_test(void *arg) {
-    static double a=0;
+    double a=0;
     set_use_cpu(0);
     while(1) {
-        for(int i=0;i<10000;i++) {
+        for(int i=0;i<100;i++) {
             a+=1;
-            usleep(1);
         }
+        usleep(1);
     }
     return NULL;
 }
