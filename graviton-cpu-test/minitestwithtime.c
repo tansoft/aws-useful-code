@@ -84,7 +84,7 @@ void *_test(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    pthread_t tid;
+    pthread_t tid[100];
     cpu_info_t st,et;
     struct timeval start, end;
     int i, usec;
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     get_cpu_occupy(0, &st);
     gettimeofday(&start, NULL);
     for(i=0;i<test_thread;i++){
-        pthread_create(&tid, NULL, _test, NULL);
+        pthread_create(&tid[i], NULL, _test, NULL);
     }
     for(i=0;i<test_thread;i++) {
         pthread_join(tid[i], NULL);
