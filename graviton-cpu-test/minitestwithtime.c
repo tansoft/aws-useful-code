@@ -86,11 +86,13 @@ void *_test(void *arg) {
 int main(int argc, char *argv[]) {
     pthread_t tid;
     cpu_info_t st,et;
+    struct timeval start, end;
+    int i, usec;
     int test_thread = atoi(argv[1]);
     set_use_cpu(1);
     get_cpu_occupy(0, &st);
     gettimeofday(&start, NULL);
-    for(int i=0;i<test_thread;i++){
+    for(i=0;i<test_thread;i++){
         pthread_create(&tid, NULL, _test, NULL);
     }
     for(i=0;i<test_thread;i++) {
