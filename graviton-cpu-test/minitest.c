@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
     }
     set_use_cpu(1);
     get_cpu_occupy(0, &st);
-    sleep(10);
+    sleep(30);
     get_cpu_occupy(0, &et);
     printf("%d,%.2f%%\n", test_thread, calc_cpu_rate(&st, &et));
 }
