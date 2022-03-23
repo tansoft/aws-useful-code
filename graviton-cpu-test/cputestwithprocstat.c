@@ -71,9 +71,11 @@ int get_process_occupy(process_info_t* info)
     sprintf(key, "/proc/%u/stat", (unsigned int)getpid());
     fp = fopen(key, "r");
     if (fgets(buf, sizeof(buf), fp)) {
-        sscanf(buf, "%u %s %c %u %u %u %u %u %u %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul", &info->pid, info->name, &info->state, &info->ppid, &info->pgrp, 
-               &info->session, &info->tty_nr, &info->tpgid, &info->flags, &info->minflt, &info->cminflt, &info->minflt, &info->majflt, &info->cmajflt,
-               &info->utime, &info->stime, &info->cutime, &info->cstime, &info->priority, &info->nice, &info->num_threads, &info->itrealvalue, &info->starttime);
+        sscanf(buf, "%u %s %c %u %u %u %u %u %u %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul %ul", &info->pid, info->name, &info->state,
+               &info->ppid, &info->pgrp, &info->session, &info->tty_nr, &info->tpgid, &info->flags,
+               &info->minflt, &info->cminflt, &info->majflt, &info->cmajflt,
+               &info->utime, &info->stime, &info->cutime, &info->cstime,
+               &info->priority, &info->nice, &info->num_threads, &info->itrealvalue, &info->starttime);
     } else {
       fclose(fp);
       return 0;
