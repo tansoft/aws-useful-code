@@ -83,9 +83,11 @@ gcc -lpthread -DUSE_SYSTEM_CPU_STAT cputest.c -O0 -o cputest
 
 ## 关于cpu亲和性
 
-在设置一个线程可以同时使用多个cpu时，
+在线程切换的时候，如果新线程和旧线程都允许使用某个vCPU，而且该vCPU比其他vCPU空闲的话，系统会沿用该vCPU进行处理，因此会节省vCPU切换的消耗，可以在上述图中2，3，4核测试时看到，vCPU在超过核数到核数2倍线程时，效率会有所上升。如果强制绑定vCPU和线程后，将会得到以下耗时随着线程数增多而平滑上升的结果。
 
 ```bash
-#指定使用系统cpu利用率进行编译再运行测试
+#指定使用线程cpu绑定后进行编译再运行测试
 gcc -lpthread -DBIND_SINGLE_VCPU_PRE_THREAD cputest.c -O0 -o cputest
 ```
+
+![cpu亲和性](benchmark-bindcpu.png)
