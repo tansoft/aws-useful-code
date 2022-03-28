@@ -274,7 +274,7 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    printf("method %d-%s: test %d cpus with %d threads\n", use_method, method_name[use_method], use_cpu, test_thread);
+    printf("method %s-%s-%d-%s: test %d cpus with %d threads\n", SYS, STAT, use_method, method_name[use_method], use_cpu, test_thread);
 
     if(pipe(pipes)<0) {
         exit(1);
