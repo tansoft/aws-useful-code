@@ -72,3 +72,6 @@ for i in 1 2 3 4 5 10 15 20 25 30 40 50 60 70 80 90; do ./cputest $i 2; done | g
 
 ![对比图表](benchmark.png)
 
+## 关于cpu利用率统计
+
+测试程序默认是使用进程的cpu利用率(/proc/<pid>/stat)进行统计，也可以通过以下宏使用系统的cpu利用率(/proc/stat)统计。但是由于系统的cpu利用率统计是定时采样的，在
