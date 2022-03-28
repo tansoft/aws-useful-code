@@ -8,6 +8,14 @@
 #include <pthread.h>
 #include <sched.h>
 
+// you can choose to use the CPU utilization of system or the CPU utilization of process for statistics
+// We recommend using the process CPU utilization, because the system utilization is regularly sampled, and statistics will be lost during frequent thread switching
+// https://lrita.github.io/images/posts/linux/Linux_CPU_Usage_Analysis.pdf
+//#define USE_SYSTEM_CPU_STAT
+
+// Each thread can be bind with a vCPU separately, which can disable the affinity considered by vCPU during thread switching
+//#define BIND_SINGLE_VCPU_PRE_THREAD
+
 //Total sampling times
 #define TEST_COUNT 50
 //Number of test cycles per test
@@ -32,6 +40,22 @@ int use_method = 0;
 #else
     #define SYS "unknown"
 #endif
+
+#ifdef USE_SYSTEM_CPU_STAT
+    #ifdef BIND_SINGLE_VCPU_PRE_THREAD
+        #define STAT "cpustatbind"
+    #else
+        #define STAT "cpustat"
+    #endif
+#else
+    #ifdef BIND_SINGLE_VCPU_PRE_THREAD
+        #define STAT "prostatbind"
+    #else
+        #define STAT "prostat"
+    #endif
+#endif
+
+#ifdef USE_SYSTEM_CPU_STAT
 
 typedef struct _cpu_info
 {
@@ -87,6 +111,64 @@ double calc_cpu_rate(cpu_info_t* old_info, cpu_info_t* new_info)
     return 0;
 }
 
+#else
+
+typedef struct _process_info
+{
+    unsigned int pid;
+    char name[40];
+    char state;
+    unsigned int ppid;
+    unsigned int pgrp;
+    unsigned int session;
+    unsigned int tty_nr;
+    unsigned int tpgid;
+    unsigned int flags;
+
+    unsigned long minflt;
+    unsigned long cminflt;
+    unsigned long majflt;
+    unsigned long cmajflt;
+
+    unsigned long utime;
+    unsigned long stime;
+    unsigned long cutime;
+    unsigned long cstime;
+
+    unsigned long priority;
+    unsigned long nice;
+    unsigned long num_threads;
+    unsigned long itrealvalue;
+    unsigned long starttime;
+}process_info_t;
+
+//Get the process stat
+int get_process_occupy(process_info_t* info)
+{
+    FILE* fp = NULL;
+    char key[20] = {0};
+    char buf[1024] = {0};
+    sprintf(key, "/proc/%u/stat", (unsigned int)getpid());
+    fp = fopen(key, "r");
+    if (fgets(buf, sizeof(buf), fp)) {
+        sscanf(buf, "%u %s %c %u %u %u %u %u %u %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", &info->pid, info->name, &info->state,
+               &info->ppid, &info->pgrp, &info->session, &info->tty_nr, &info->tpgid, &info->flags,
+               &info->minflt, &info->cminflt, &info->majflt, &info->cmajflt,
+               &info->utime, &info->stime, &info->cutime, &info->cstime,
+               &info->priority, &info->nice, &info->num_threads, &info->itrealvalue, &info->starttime);
+        //printf("%u %u %u %u %u %u %lu %lu %lu %lu %lu %lu %lu %lu\n", info->ppid, info->pgrp, info->session, info->tty_nr, info->tpgid, info->flags,
+        //      info->minflt, info->cminflt, info->majflt, info->cmajflt,
+        //      info->utime,info->stime,info->cutime,info->cstime);
+    } else {
+      fclose(fp);
+      return 0;
+    }
+    fclose(fp);
+    return info->utime + info->stime + info->cutime + info->cstime;
+}
+
+#endif
+
 //Set which vCPU used by the thread. start: is the index of the begin range of vCPU, start form 0. count: is the number of vCPUs used continuously
 //e.g. set_use_cpu(2, 3) => use vCPU2 vCPU3 vCPU4 together
 void set_use_cpu(int start, int count) {
@@ -125,9 +207,15 @@ char method_name[][10] = {"inc", "memcpy"};
 
 void *_test(void *arg) {
     int usec;
+    int i=(int)(long)arg;
     struct timeval start, end;
+#ifdef BIND_SINGLE_VCPU_PRE_THREAD
+    //Each thread is bound to a fixed vCPU separately
+    set_use_cpu((START_CPU_INDEX+i) % use_cpu, 1);
+#else
     //Fixed use 'use_cpu' CPUs starting with START_CPU_INDEX
     set_use_cpu(START_CPU_INDEX, use_cpu);
+#endif
     while(1) {
         gettimeofday(&start, NULL);
         methods[use_method]();
@@ -144,10 +232,18 @@ int main(int argc, char *argv[]) {
     long sum = 0;
     long count = 0;
     pthread_t tid;
-    cpu_info_t sinfo[MAX_CPU];
-    cpu_info_t einfo[MAX_CPU];
     double cpurate;
     int cpucount;
+#ifdef USE_SYSTEM_CPU_STAT
+    cpu_info_t sinfo[MAX_CPU];
+    cpu_info_t einfo[MAX_CPU];
+#else
+    process_info_t info;
+    long stime,etime;
+    double sectick;
+    struct timeval start, end;
+    int clock_ticks;
+#endif
 
     if (argc < 2) {
         printf("usage: threadtest <thread_count> <use_cpu> <use_method>\n");
@@ -186,16 +282,23 @@ int main(int argc, char *argv[]) {
 
     //init threads
     for(i=0;i<test_thread;i++){
-        pthread_create(&tid, NULL, _test, NULL);
+        pthread_create(&tid, NULL, _test, (void *)(long)i);
     }
     //sleep for 500ms to make the thread run stably
     usleep(500000);
     //The main thread uses the last CPU to avoid affecting the test in thread
     set_use_cpu(cpucount-1, 1);
 
+#ifdef USE_SYSTEM_CPU_STAT
     for(i=0;i<use_cpu;i++) {
         get_cpu_occupy(START_CPU_INDEX+i, &sinfo[i]);
     }
+#else
+    clock_ticks = sysconf(_SC_CLK_TCK);
+    gettimeofday(&start, NULL);
+    stime = get_process_occupy(&info);
+#endif
+
     while(count<TEST_COUNT) {
         //Get the time-consuming results sent by each thread
         for(i=0;i<test_thread;i++) {
@@ -203,20 +306,27 @@ int main(int argc, char *argv[]) {
             sum+=usec;
         }
         count++;
+#ifdef USE_SYSTEM_CPU_STAT
         cpurate = 0.0;
         for(i=0;i<use_cpu;i++) {
             get_cpu_occupy(START_CPU_INDEX+i, &einfo[i]);
             cpurate += calc_cpu_rate(&sinfo[i], &einfo[i]);
         }
         cpurate /= use_cpu;
+#else
+        gettimeofday(&end, NULL);
+        etime = get_process_occupy(&info);
+        sectick = (end.tv_sec-start.tv_sec)+(end.tv_usec-start.tv_usec)/1000000.0;
+        cpurate = (etime - stime)*100.0/(sectick * clock_ticks);
+#endif
         printf("threads: %d times: %d speed: %6.2fus cpu:%6.2f%%\n",
                 test_thread, count,
                 sum*1.0/count/test_thread,
                 cpurate);
     }
     //printing average use time and average CPU utilization
-    printf("mode-%s-%d-%s-%d,%d,%.2f,%.2f\n",
-        SYS, use_method, method_name[use_method], use_cpu, test_thread,
+    printf("mode-%s-%s-%d-%s-%d,%d,%.2f,%.2f\n",
+        SYS, STAT, use_method, method_name[use_method], use_cpu, test_thread,
         sum*1.0/count/test_thread, cpurate);
     close(pipes[0]);
     close(pipes[1]);
