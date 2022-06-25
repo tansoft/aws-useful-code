@@ -5,7 +5,7 @@ curpath=$(cd "$(dirname "$0")";pwd)
 
 #alias2arn
 alias=$1
-instanceid=`aws connect list-instances --region ${region} | jq -r '.InstanceSummaryList[]|select(.InstanceAlias=="${alias}").Arn'`
+instanceid=`aws connect list-instances --region ${region} | jq -r ".InstanceSummaryList[]|select(.InstanceAlias==\"${alias}\").Arn"`
 
 #arn2alias
 #instanceid=arn:aws:connect:us-east-1:xxx:instance/xxx
