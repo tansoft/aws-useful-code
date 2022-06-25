@@ -15,7 +15,7 @@ instanceid=`aws connect list-instances --region ${region} | jq -r '.InstanceSumm
 #username is ec2 instance id
 user=`curl http://169.254.169.254/latest/meta-data/instance-id`
 #ensure password meets complexity policy
-pass=`echo $user | md5`
+pass=`echo $user | md5sum`
 pass=`echo "${pass:0:6}Ab1"`
 
 alias=`aws connect describe-instance --instance-id ${instanceid} --region ${region} | jq -r '.Instance.InstanceAlias'`
