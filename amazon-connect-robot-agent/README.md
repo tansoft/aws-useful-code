@@ -2,7 +2,7 @@
 
 制作 Selenium 镜像和启动脚本，可以方便地创建机器人账号，然后登录Amazon Connect。
 
-通过使用 c5.xlarge 机型，标准Amazon Linux2系统，进行镜像制作，安装软件和相关程序后，制作成基础 AMI 镜像。
+通过使用 c5.large 机型，标准Amazon Linux2系统，进行镜像制作，安装软件和相关程序后，制作成基础 AMI 镜像。
 
 ## 安装相应软件
 
