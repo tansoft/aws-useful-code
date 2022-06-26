@@ -89,7 +89,7 @@ sudo service sshd restart
 ## 实例测试
 
 * 如果简单启动实例，可以直接以模版启动实例，也可以配置弹性伸缩组自动启动实例。
-* 使用管理员登录connect管理台，查看robot动态： https://<connect-alias>.my.connect.aws/real-time-metrics?tableType=user
+* 使用管理员登录connect管理台，查看robot动态： ```https://<connect-alias>.my.connect.aws/real-time-metrics?tableType=user```
 * 可以看到机器人上线可用状态，这时拨打电话，机器人就会进行接听
 * 通话结束后，可以在s3上看到录音文件
 
