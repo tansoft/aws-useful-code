@@ -24,12 +24,11 @@ routingId=`aws connect list-routing-profiles --instance-id ${instanceid} --regio
 
 echo "create User ${user} in ${alias} with Pass: ${pass} SecurityId: ${securityId} RoutingId: ${routingId} ..."
 
-aws connect create-user --username ${user} --password Pass@Word1 \
+aws connect create-user --username ${user} --password ${pass} \
   --identity-info FirstName=${user},LastName=robot \
   --phone-config PhoneType=SOFT_PHONE,AutoAccept=true,AfterContactWorkTimeLimit=1 \
   --security-profile-id ${securityId} --routing-profile-id ${routingId} \
   --instance-id ${instanceid} --region ${region}
 
-screen
-
-python3 ${curpath}/robotagent.py -a ${alias} -u ${user} -p ${pass}
+#screen
+#python3 ${curpath}/robotagent.py -a ${alias} -u ${user} -p ${pass}
