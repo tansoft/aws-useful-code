@@ -31,4 +31,4 @@ aws connect create-user --username ${user} --password ${pass} \
   --instance-id ${instanceid} --region ${region}
 
 #screen
-python3 ${curpath}/robotagent.py -a ${alias} -u ${user} -p ${pass} | tee -a /usr/local/src/robotagent.log
+python3 ${curpath}/robotagent.py -a ${alias} -u ${user} -p ${pass}
