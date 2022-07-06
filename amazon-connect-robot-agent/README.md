@@ -2,7 +2,7 @@
 
 制作 Selenium 镜像和启动脚本，可以方便地创建机器人账号，然后登录Amazon Connect。
 
-通过使用 c5.xlarge 机型，标准Amazon Linux2系统，进行镜像制作，安装软件和相关程序后，制作成基础 AMI 镜像。
+通过使用 c5.large 机型，标准Amazon Linux2系统，进行镜像制作，安装软件和相关程序后，制作成基础 AMI 镜像。
 
 ## 安装相应软件
 
@@ -68,13 +68,13 @@ sudo service sshd restart
 
 ## 制作 AMI 镜像
 
-* 打开 EC2 控制台 https://console.aws.amazon.com/ec2/v2/home，左侧选择“实例->实例”
+* 打开 EC2 控制台 https://console.aws.amazon.com/ec2/v2/home ，左侧选择“实例->实例”
 * 选中对应实例，操作 -> 映像和模版 -> 创建映像
 * 映像名称 connect-robot，选择“无重启”，创建映像
-* 打开 IAM 控制台 https://console.aws.amazon.com/iamv2/home，左侧选择“角色”
+* 打开 IAM 控制台 https://console.aws.amazon.com/iamv2/home ，左侧选择“角色”
 * 创建角色，下方选择 EC2，下一步，通过搜索，选择 AmazonConnect_FullAccess 策略，下一步
 * 角色名称：ec2-role-for-connect，创建角色
-* 打开 EC2 控制台 https://console.aws.amazon.com/ec2/v2/home，左侧选择“映像->AMI”，等待映像制作完毕
+* 打开 EC2 控制台 https://console.aws.amazon.com/ec2/v2/home ，左侧选择“映像->AMI”，等待映像制作完毕
 * 左侧选择“实例->启动模版”，创建启动模版
 * 启动模版名称 connect-robot，系统映像选择 我的AMI，选择connect-robot；密钥对、VPC、网口、安全组等，选择自己常用的
 * 展开高级详细信息，IAM实例配置文件，选择ec2-role-for-connect；用户数据user-data中，填入以下启动脚本，其中 connect-alias 是您对应的 Connect 实例别名：
@@ -89,7 +89,7 @@ sudo service sshd restart
 ## 实例测试
 
 * 如果简单启动实例，可以直接以模版启动实例，也可以配置弹性伸缩组自动启动实例。
-* 使用管理员登录connect管理台，查看robot动态： https://<connect-alias>.my.connect.aws/real-time-metrics?tableType=user
+* 使用管理员登录connect管理台，查看robot动态： ```https://<connect-alias>.my.connect.aws/real-time-metrics?tableType=user```
 * 可以看到机器人上线可用状态，这时拨打电话，机器人就会进行接听
 * 通话结束后，可以在s3上看到录音文件
 
