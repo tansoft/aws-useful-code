@@ -92,7 +92,8 @@ except Exception as e:
 # ensure screen process not to exit
 while True:
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()), ' sleeping...')
-    time.sleep(3600)
+    WebDriverWait(driver, 3600).until(EC.presence_of_element_located((By.CSS_SELECTOR,'button[data-testid="ccp-softphone-mute-button"]')))
+    driver.find_element(By.CSS_SELECTOR,'button[data-testid="ccp-softphone-mute-button"]').click();
 
 #driver.close()
 #driver.quit()
