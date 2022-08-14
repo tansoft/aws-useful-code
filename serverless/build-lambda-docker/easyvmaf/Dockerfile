@@ -15,11 +15,17 @@ RUN pip3 install \
         --target ${FUNCTION_DIR} \
         awslambdaric
 
+# add debug env
+RUN apt-get update && apt-get install wget && \
+  wget https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie -O /usr/local/bin/aws-lambda-rie && \
+  chmod +x /usr/local/bin/aws-lambda-rie
+RUN echo "#!/bin/bash\ncd ${FUNCTION_DIR}\nif [ -z \"\${AWS_LAMBDA_RUNTIME_API}\" ]; then\n  exec /usr/local/bin/aws-lambda-rie /usr/local/bin/python -m awslambdaric \$@\nelse\n  exec /usr/local/bin/python -m awslambdaric \$@\nfi\n" > /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
+
 # Copy function code
-COPY * ${FUNCTION_DIR}
+COPY * ${FUNCTION_DIR}/
 
 RUN pip3 install -r requirements.txt --target "${FUNCTION_DIR}"
 
-ENTRYPOINT [ "/usr/local/bin/python", "-m", "awslambdaric" ]
-CMD [ "app.handler" ]
-
+# ENTRYPOINT [ "/usr/local/bin/python", "-m", "awslambdaric" ]
+ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
+CMD [ "app.lambda_handler" ]
