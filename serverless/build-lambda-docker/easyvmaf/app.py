@@ -1,72 +1,45 @@
-import requests
-import json
-import datetime
-import hashlib
-
-def region2text(region):
-    #aws ec2 describe-regions --all-regions --query "Regions[].{Name:RegionName}" --output text
-    #https://www.awsregion.info/
-    #https://en.wikipedia.org/wiki/ISO_3166-1#Current_codes
-    regions = {
-        'us-east-1': 'US,US-VA,Virginia,',
-        'us-east-2': 'US,US-OH,Ohio,',
-        'us-west-1': 'US,US-CA,California,',
-        'us-west-2': 'US,US-OR,Oregon,',
-        'af-south-1': 'ZA,ZA-WC,Cape Town,',
-        'ap-east-1': 'HK,CN-HK,Hong Kong,',
-        'ap-south-1': 'IN,IN-MH,Mumbai,',
-        'ap-northeast-3': 'JP,JP-27,Osaka,',
-        'ap-northeast-2': 'KR,KR-11,Seoul,',
-        'ap-southeast-1': 'SG,SG-01,Singapore,',
-        'ap-southeast-2': 'AU,AU-NSW,Sydney,',
-        'ap-northeast-1': 'JP,JP-13,Tokyo,',
-        'ca-central-1': 'CA,CA-QC,Montreal,',
-        'eu-central-1': 'DE,DE-HE,Frankfurt,', #德国中西部黑森州
-        'eu-west-1': 'IE,IE-D,Dublin,',
-        'eu-west-2': 'GB,GB-LND,London,',
-        'eu-south-1': 'IT,IT-MI,Milan,',
-        'eu-west-3': 'FR,FR-75,Paris,',
-        'eu-north-1': 'SE,SE-AB,Stockholm,',
-        'me-south-1': 'BH,BH-13,Bahrain,',
-        'sa-east-1': 'BR,BR-SP,Sao Paulo,',
-        'cn-north-1': 'CN,CN-BJ,Beijing,',
-        'cn-northwest-1': 'CN,CN-NX,Ningxia,',
-        'us-gov-east-1': 'US,US-VA,Virginia,',
-        'us-gov-west-1': 'US,US-CA,California,',
-        'ap-southeast-3': 'ID,ID-JK,Jakarta,',
-        'eu-east-1': 'ES,ES-MD,Spain,',
-    }
-    if region in regions:
-        return regions[region]
-    return ',,,'
-
-def timeconvert(dt):
-    #2020-10-19-02-41-17 => rfc3339 020-10-19T02:41:17
-    dt = dt.split('-')
-    d = datetime.datetime(int(dt[0]), int(dt[1]), int(dt[2]), int(dt[3]), int(dt[4]), int(dt[5]),)
-    return d.isoformat('T')
+import boto3
+import os
+import subprocess
+from tempfile import NamedTemporaryFile
 
 def lambda_handler(event, context):
-    r = requests.get("https://ip-ranges.amazonaws.com/ip-ranges.json")
-    content = r.content
-    headers = {
-        "Content-Type": "text/csv"
-    }
-    if (r.status_code == 200):
-        data = json.loads(content)
-        headers['X-createDate'] = data['createDate']
-        prefixslen = len(data['prefixes'])
-        content = ''
-        for x in range(0, prefixslen):
-            obj = data['prefixes'][x]
-            content += obj['ip_prefix'] + ',' + region2text(obj['region']) + "\n"
-        content = "#\n# AWS Cloud Geofeed, last updated (rfc3339): " + timeconvert(data['createDate']) + \
-            "\n# Self-published geofeed as defined in RFC 8805.\n" + \
-            "# Number of records: " + str(prefixslen) + ", checksum of the actual content minus comments:\n" + \
-            "# SHA256 = " + hashlib.sha256(content.encode("utf-8")).hexdigest() + "\n" + content + "#\n"
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+    region = event['Records'][0]['awsRegion']
+    extinfo = os.path.splitext(key)
+    print('bucket:', bucket , ' file:' , key , ' region:' , region , ' ext:' , extinfo[1])
+    status = 0
+    ret = ''
+    if extinfo[1] == '.mp4':
+        srcfile = key.split('_',1)[0] + '.mp4'
+        f1 = NamedTemporaryFile(prefix='vmaf', suffix='.mp4', dir='/tmp')
+        f2 = NamedTemporaryFile(prefix='vmaf', suffix='.mp4', dir='/tmp')
+        ftxt = NamedTemporaryFile(prefix='vmaf', suffix='.txt', dir='/tmp', delete=False)
+
+        # 下载源文件
+        s3 = boto3.resource('s3', region_name = region)
+        s3.Bucket(bucket).download_file(srcfile, f1.name)
+        s3.Bucket(bucket).download_file(key, f2.name)
+
+        cmd = ['python3','easyVmaf.py','-d',f2.name,'-r',f1.name,'-sw','2']
+        ret = subprocess.check_output(cmd)
+        ftxt.write(ret) #.encode('utf-8')
+        print(ret)
+
+        # 查看生成情况
+        cmd = ['ls', '-l', '/tmp/']
+        ret = subprocess.check_output(cmd)
+        ftxt.write(ret)
+        print(ret)
+
+        ftxt.close()
+
+        # 上传到s3上
+        s3.Bucket(bucket).upload_file(ftxt.name, extinfo[0] + '.txt')
+        s3.Bucket(bucket).upload_file('/tmp/vmaf.json', extinfo[0] + '.json')
+        status = 200
     return {
-        "isBase64Encoded": False,
-        "statusCode": r.status_code,
-        "headers": headers,
-        'body': content
+        'statusCode': status,
+        'body': ''
     }

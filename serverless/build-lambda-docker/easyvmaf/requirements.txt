@@ -1,1 +1,2 @@
-requests
+boto3
+ffmpeg_progress_yield
