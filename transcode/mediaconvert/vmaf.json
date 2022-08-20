@@ -1,0 +1,519 @@
+{
+    "Queue": "[queue]",
+    "UserMetadata": {},
+    "Role": "[role]",
+    "Settings": {
+      "TimecodeConfig": {
+        "Source": "ZEROBASED"
+      },
+      "OutputGroups": [
+        {
+          "CustomName": "[output]",
+          "Name": "File Group",
+          "Outputs": [
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100,
+                "CodecSettings": {
+                  "Codec": "H_264",
+                  "H264Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 8000000,
+                    "MaxBitrate": 4000000,
+                    "EntropyEncoding": "CABAC",
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 10
+                    },
+                    "CodecProfile": "HIGH",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_264_vmaf_qvbr10"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100, 
+                "CodecSettings": {
+                  "Codec": "H_264",
+                  "H264Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 6000000,
+                    "MaxBitrate": 3000000,
+                    "EntropyEncoding": "CABAC",
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 9
+                    },
+                    "CodecProfile": "HIGH",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_264_vmaf_qvbr9"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100, 
+                "CodecSettings": {
+                  "Codec": "H_264",
+                  "H264Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 4000000,
+                    "MaxBitrate": 2000000,
+                    "EntropyEncoding": "CABAC",
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 8
+                    },
+                    "CodecProfile": "HIGH",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_264_vmaf_qvbr8"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100,
+                "CodecSettings": {
+                  "Codec": "H_264",
+                  "H264Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 2000000,
+                    "MaxBitrate": 1000000,
+                    "EntropyEncoding": "CABAC",
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 7
+                    },
+                    "CodecProfile": "HIGH",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_264_vmaf_qvbr7"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100,
+                "CodecSettings": {
+                  "Codec": "H_265",
+                  "H265Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 8000000,
+                    "MaxBitrate": 4000000,
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 10
+                    },
+                    "CodecProfile": "MAIN_MAIN",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_265_vmaf_qvbr10"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100,
+                "CodecSettings": {
+                  "Codec": "H_265",
+                  "H265Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 6000000,
+                    "MaxBitrate": 3000000,
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 9
+                    },
+                    "CodecProfile": "MAIN_MAIN",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_265_vmaf_qvbr9"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100,
+                "CodecSettings": {
+                  "Codec": "H_265",
+                  "H265Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 4000000,
+                    "MaxBitrate": 2000000,
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 8
+                    },
+                    "CodecProfile": "MAIN_MAIN",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_265_vmaf_qvbr8"
+            },
+            {
+              "ContainerSettings": {
+                "Container": "MP4",
+                "Mp4Settings": {}
+              },
+              "VideoDescription": {
+                "VideoPreprocessors": {
+                  "NoiseReducer": {
+                    "Filter": "TEMPORAL",
+                    "TemporalFilterSettings": {
+                      "PostTemporalSharpening": "ENABLED",
+                      "PostTemporalSharpeningStrength": "LOW",
+                      "Strength": 1
+                    }
+                  }
+                },
+                "Sharpness": 100, 
+                "CodecSettings": {
+                  "Codec": "H_265",
+                  "H265Settings": {
+                    "InterlaceMode": "PROGRESSIVE",
+                    "NumberReferenceFrames": 3,
+                    "GopClosedCadence": 1,
+                    "HrdBufferInitialFillPercentage": 90,
+                    "GopSize": 6,
+                    "GopBReference": "ENABLED",
+                    "HrdBufferSize": 2000000,
+                    "MaxBitrate": 1000000,
+                    "RateControlMode": "QVBR",
+                    "QvbrSettings": {
+                      "QvbrQualityLevel": 7
+                    },
+                    "CodecProfile": "MAIN_MAIN",
+                    "MinIInterval": 1,
+                    "AdaptiveQuantization": "OFF",
+                    "SceneChangeDetect": "TRANSITION_DETECTION",
+                    "QualityTuningLevel": "SINGLE_PASS",
+                    "GopSizeUnits": "SECONDS",
+                    "NumberBFramesBetweenReferenceFrames": 5,
+                    "DynamicSubGop": "ADAPTIVE"
+                  }
+                }
+              },
+              "AudioDescriptions": [
+                {
+                  "AudioSourceName": "Audio Selector 1",
+                  "CodecSettings": {
+                    "Codec": "AAC",
+                    "AacSettings": {
+                      "Bitrate": 96000,
+                      "CodingMode": "CODING_MODE_2_0",
+                      "SampleRate": 44100
+                    }
+                  }
+                }
+              ],
+              "NameModifier": "_265_vmaf_qvbr7"
+            }
+          ],
+          "OutputGroupSettings": {
+            "Type": "FILE_GROUP_SETTINGS",
+            "FileGroupSettings": {
+              "Destination": "s3://[bucket]/",
+              "DestinationSettings": {
+                "S3Settings": {
+                  "AccessControl": {
+                    "CannedAcl": "BUCKET_OWNER_FULL_CONTROL"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "Inputs": [
+        {
+          "AudioSelectors": {
+            "Audio Selector 1": {
+              "DefaultSelection": "DEFAULT"
+            }
+          },
+          "VideoSelector": {},
+          "FilterStrength": 4,
+          "DeblockFilter": "ENABLED",
+          "DenoiseFilter": "ENABLED",
+          "TimecodeSource": "ZEROBASED",
+          "FileInput": "s3://[bucket]/[srcfile]"
+        }
+      ]
+    },
+    "AccelerationSettings": {
+      "Mode": "DISABLED"
+    },
+    "StatusUpdateInterval": "SECONDS_60",
+    "Priority": 0
+}

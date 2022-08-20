@@ -10,7 +10,10 @@ VMAF https://github.com/gdavila/easyVMAF 是在libvmaf基础上，进行视频�
 
 ### 构建并推送docker
 
+```bash
+cd ..
 ./makeimg.sh easyvmaf
+```
 
 ### 使用镜像创建 lambda 函数
 
@@ -100,7 +103,7 @@ VMAF output File Path:  /tmp/vmaf.json
     ... 此处省略其他帧
     ],
   "pooled_metrics": {
-    //integer_motion，integer_motion2，integer_adm2，integer_vif_scale0 ～ integer_vif_scale3，integer_adm_scale0 ～ integer_adm_scale3
+    ... 此处省略其他键值 integer_motion2，integer_adm2，integer_vif_scale0 ～ integer_vif_scale3，integer_adm_scale0 ～ integer_adm_scale3
     "integer_motion": {
       "min": 0.000000,
       "max": 13.401610,
@@ -135,20 +138,26 @@ print("VMAF score (arithmetic mean): ", mean(vmafScore))
 print("VMAF score (harmonic mean): ", harmonic_mean(vmafScore))
 ```
 
+### 查看测试报告
+
 ### 本地调试
 
 #### 本地运行实例
 
+```bash
 docker rm -f -v test-easyvmaf
-
 docker run -d -p 9000:8080 -e AWS_LAMBDA_FUNCTION_TIMEOUT=900 -e AWS_LAMBDA_FUNCTION_MEMORY_SIZE=1024  -e AWS_ACCESS_KEY_ID=xxx -e AWS_SECRET_ACCESS_KEY=xxx --name test-easyvmaf easyvmaf:latest
+```
 
 #### 本地提交测试
 
+```bash
 curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"Records":[{"awsRegion":"ap-northeast-1","s3":{"bucket":{"name":"video-xxx"},"object":{"key":"aaa.mp4"}}}]}'
+```
 
 #### 登录环境进行查看
 
+```bash
 docker exec -it -t test-easyvmaf /bin/bash
-
 apt install inotify-tools vim procps
+```
