@@ -23,7 +23,7 @@ RUN echo "#!/bin/bash\ncd ${FUNCTION_DIR}\nif [ -z \"\${AWS_LAMBDA_RUNTIME_API}\
 
 #avoid write to WORKDIR
 RUN sed -i 's#stats_file_psnr.log#/tmp/stats_file_psnr.log#' /app/easyVmaf/FFmpeg.py && \
-  sed -i 's#self.vmafpath = log_path#log_path = "/tmp/vmaf.json"\nself.vmafpath = log_path\n"#' /app/easyVmaf/FFmpeg.py
+  sed -i 's#self.vmafpath = log_path#log_path = "/tmp/vmaf.json"\n        self.vmafpath = log_path#' /app/easyVmaf/FFmpeg.py
 
 # Copy function code
 COPY * ${FUNCTION_DIR}/
