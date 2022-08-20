@@ -22,7 +22,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -81,7 +80,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -140,7 +138,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -199,7 +196,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -258,7 +254,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -316,7 +311,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -374,7 +368,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }
@@ -432,7 +425,6 @@
                     "Filter": "TEMPORAL",
                     "TemporalFilterSettings": {
                       "PostTemporalSharpening": "ENABLED",
-                      "PostTemporalSharpeningStrength": "LOW",
                       "Strength": 1
                     }
                   }

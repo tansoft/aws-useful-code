@@ -83,8 +83,12 @@ function runjob() {
             echo "[$date] $jobstatus"
             sleep 20
         else
-            st=`echo $jobinfo | jq -r '.Job.Timing.StartTime | (split("+")[0] + "Z") | fromdate'`
-            et=`echo $jobinfo | jq -r '.Job.Timing.FinishTime | (split("+")[0] + "Z") | fromdate'`
+            #echo $jobinfo
+            #有时这里返回是时间戳，有时返回是UTC时间
+            #st=`echo $jobinfo | jq -r '.Job.Timing.StartTime | (split("+")[0] + "Z") | fromdate'`
+            #et=`echo $jobinfo | jq -r '.Job.Timing.FinishTime | (split("+")[0] + "Z") | fromdate'`
+            st=`echo $jobinfo | jq -r '.Job.Timing.StartTime'`
+            et=`echo $jobinfo | jq -r '.Job.Timing.FinishTime'`
             time=`expr $et - $st`
             echo usetime:$time,status:$jobstatus
             if [ "$jobstatus" == "ERROR" ]; then
@@ -94,14 +98,16 @@ function runjob() {
                 do
                     file="$outprefix$output$i.mp4"
                     aws s3 ls $file
-                    #s3自动触发完成vmaf分析
-                    score=`aws s3 cp s3://$bucket/$outprefix$output$i.txt - | grep "VMAF score"`
+                    #s3自动触发完成vmaf分析，如果没有配置成功，则会一直等待
+                    #参见：https://github.com/tansoft/aws-useful-code/tree/main/serverless/build-lambda-docker/easyvmaf
                     while [ true ];
                     do
-                        if [ `echo $score | wc -l` == "2" ]; then
-                            echo $score
+                        score=`aws s3 cp $outprefix$output$i.txt - 2>&1 | grep "VMAF score"`
+                        if [ $? == 0 ]; then
+                            echo $score | grep "VMAF score"
                             break
                         else
+                            echo "waiting $outprefix$output$i.txt ..."
                             sleep 20
                         fi
                     done
@@ -117,11 +123,12 @@ function runjob() {
                     fi
                 done
             fi
+            echo mediaconvert finish
             break
         fi
     done
 }
 
 runjob 1.mp4 1 qvbr
-#runjob 1.mp4 1 tune
-#runjob 1.mp4 1 vmaf
+runjob 1.mp4 1 tune
+runjob 1.mp4 1 vmaf
