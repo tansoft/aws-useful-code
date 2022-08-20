@@ -1,6 +1,6 @@
 
 region=ap-northeast-1
-bucket=video-xxx
+bucket=video-transcode-202208
 
 endpoint=`aws mediaconvert describe-endpoints --region $region | jq -r .Endpoints[0].Url`
 
@@ -123,5 +123,5 @@ function runjob() {
 }
 
 runjob 1.mp4 1 qvbr
-runjob 1.mp4 1 tune
-runjob 1.mp4 1 vmaf
+#runjob 1.mp4 1 tune
+#runjob 1.mp4 1 vmaf
