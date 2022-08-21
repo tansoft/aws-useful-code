@@ -18,7 +18,7 @@ for num in {1..12}
 do
     echo parsing ${num} ...
 
-    aws s3 cp s3://${bucket}/${num}.mp4 .
+    aws s3 cp s3://${bucket}/${num}.mp4 . --region $region
 
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_h264 -g 150 -profile:v high -b:v 350K -b:a 96K ${num}_264_vt1.mp4
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_hevc -g 150 -profile:v main -b:v 300K -b:a 96K ${num}_265_vt1.mp4
@@ -26,5 +26,5 @@ do
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_h264 -g 150 -profile:v high -b:v 400K -expert-options dynamic-params=dynparams.txt -b:a 96K ${num}_264_vt1d.mp4
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_hevc -g 150 -profile:v main -b:v 400K -expert-options dynamic-params=dynparams.txt -b:a 96K ${num}_265_vt1d.mp4
 
-    aws s3 cp ${num}_*.mp4 s3://${bucket}/
+    aws s3 cp ${num}_*.mp4 s3://${bucket}/ --region $region
 done
