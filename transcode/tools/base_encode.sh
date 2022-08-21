@@ -58,5 +58,13 @@ function ffmpegasync() {
 }
 
 #在线lambda调用
-cmd=`echo "ffmpeg -i 1.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K 1_264_base1.mp4" | base64 -w 0`
-ffmpegasync "1.mp4" "1_264_base1.mp4" $cmd 
+for num in {1..12}
+do
+    echo parsing ${num} ...
+
+    cmd=`echo "ffmpeg -i ${num}.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K ${num}_264_base.mp4" | base64 -w 0`
+    ffmpegasync "${num}.mp4" "${num}_264_base.mp4" $cmd
+
+    cmd=`echo "ffmpeg -i ${num}.mp4 -c:v hevc -crf 26 -profile:v main -b:a 96K ${num}_265_base.mp4" | base64 -w 0`
+    ffmpegasync "${num}.mp4" "${num}_265_base.mp4" $cmd
+done
