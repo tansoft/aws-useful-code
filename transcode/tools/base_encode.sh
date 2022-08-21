@@ -57,9 +57,19 @@ function ffmpegasync() {
     aws lambda invoke-async --function ffmpegrun --region ${region} --invoke-args $tmpfile
 }
 
-#在线lambda调用
-for num in {1..12}
-do
+function encodetestlocal() {
+    num=$1
+    echo parsing ${num} ...
+    aws s3 cp s3://${bucket}/${num}.mp4 .
+    ffmpeg -i ${num}.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K ${num}_264_base.mp4
+    ffmpeg -i ${num}.mp4 -c:v hevc -crf 26 -profile:v main -b:a 96K ${num}_265_base.mp4
+    aws s3 cp ${num}_264_base.mp4 s3://${bucket}/
+    aws s3 cp ${num}_265_base.mp4 s3://${bucket}/
+    rm -f ${num}.mp4
+}
+
+function encodetest() {
+    num=$1
     echo parsing ${num} ...
 
     cmd=`echo "ffmpeg -i ${num}.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K ${num}_264_base.mp4" | base64 -w 0`
@@ -67,4 +77,16 @@ do
 
     cmd=`echo "ffmpeg -i ${num}.mp4 -c:v hevc -crf 26 -profile:v main -b:a 96K ${num}_265_base.mp4" | base64 -w 0`
     ffmpegasync "${num}.mp4" "${num}_265_base.mp4" $cmd
+}
+
+#指定文件转码
+arr=("2" "10" "11" "12")
+for num in ${arr[@]}
+#循环所有文件转码
+#for num in {1..12}
+do
+    #本地ffmpeg调用
+    encodetestlocal $num
+    #在线lambda调用
+    #encodetest $num
 done

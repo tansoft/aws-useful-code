@@ -26,5 +26,8 @@ do
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_h264 -g 150 -profile:v high -b:v 400K -expert-options dynamic-params=dynparams.txt -b:a 96K ${num}_264_vt1d.mp4
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_hevc -g 150 -profile:v main -b:v 400K -expert-options dynamic-params=dynparams.txt -b:a 96K ${num}_265_vt1d.mp4
 
-    aws s3 cp ${num}_*.mp4 s3://${bucket}/ --region $region
+    aws s3 cp ${num}_264_vt1.mp4 s3://${bucket}/ --region $region
+    aws s3 cp ${num}_265_vt1.mp4 s3://${bucket}/ --region $region
+    aws s3 cp ${num}_264_vt1d.mp4 s3://${bucket}/ --region $region
+    aws s3 cp ${num}_265_vt1d.mp4 s3://${bucket}/ --region $region
 done
