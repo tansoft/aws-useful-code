@@ -20,6 +20,8 @@ do
 
     aws s3 cp s3://${bucket}/${num}.mp4 . --region $region
 
+    # 如果源文件是 h265 的，需要使用 mpsoc_vcu_hevc 进行输入解码
+
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_h264 -g 150 -profile:v high -b:v 350K -b:a 96K ${num}_264_vt1.mp4
     ffmpeg -y -c:v mpsoc_vcu_h264 -i ${num}.mp4 -c:v mpsoc_vcu_hevc -g 150 -profile:v main -b:v 300K -b:a 96K ${num}_265_vt1.mp4
 
