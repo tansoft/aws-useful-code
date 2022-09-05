@@ -1,0 +1,200 @@
+{
+  "Queue": "[queue]",
+  "UserMetadata": {},
+  "Role": "[role]",
+  "Settings": {
+    "TimecodeConfig": {
+      "Source": "ZEROBASED"
+    },
+    "OutputGroups": [
+      {
+        "Name": "File Group",
+        "Outputs": [
+          {
+            "ContainerSettings": {
+              "Container": "MP4",
+              "Mp4Settings": {}
+            },
+            "VideoDescription": {
+              "Width": 360,
+              "VideoPreprocessors": {
+                "Deinterlacer": {}
+              },
+              "Sharpness": 100,
+              "CodecSettings": {
+                "Codec": "H_264",
+                "H264Settings": {
+                  "ParNumerator": 1,
+                  "NumberReferenceFrames": 3,
+                  "GopSize": 3,
+                  "GopBReference": "ENABLED",
+                  "HrdBufferSize": 1000000,
+                  "MaxBitrate": 400000,
+                  "ParDenominator": 1,
+                  "SpatialAdaptiveQuantization": "ENABLED",
+                  "TemporalAdaptiveQuantization": "ENABLED",
+                  "FlickerAdaptiveQuantization": "DISABLED",
+                  "RateControlMode": "QVBR",
+                  "QvbrSettings": {
+                    "QvbrQualityLevel": 8
+                  },
+                  "CodecProfile": "HIGH",
+                  "AdaptiveQuantization": "MEDIUM",
+                  "SceneChangeDetect": "TRANSITION_DETECTION",
+                  "QualityTuningLevel": "SINGLE_PASS_HQ",
+                  "GopSizeUnits": "SECONDS",
+                  "ParControl": "SPECIFIED",
+                  "NumberBFramesBetweenReferenceFrames": 5
+                }
+              }
+            },
+            "AudioDescriptions": [
+              {
+                "AudioSourceName": "Audio Selector 1",
+                "CodecSettings": {
+                  "Codec": "AAC",
+                  "AacSettings": {
+                    "Bitrate": 64000,
+                    "CodingMode": "CODING_MODE_2_0",
+                    "SampleRate": 48000
+                  }
+                }
+              }
+            ],
+            "NameModifier": "/360p-$rv$kbits-$w$w-$h$h-$f$fr"
+          },
+          {
+            "ContainerSettings": {
+              "Container": "MP4",
+              "Mp4Settings": {}
+            },
+            "VideoDescription": {
+              "Width": 480,
+              "VideoPreprocessors": {
+                "Deinterlacer": {}
+              },
+              "Sharpness": 100,
+              "CodecSettings": {
+                "Codec": "H_264",
+                "H264Settings": {
+                  "ParNumerator": 1,
+                  "NumberReferenceFrames": 3,
+                  "GopSize": 3,
+                  "GopBReference": "ENABLED",
+                  "HrdBufferSize": 2000000,
+                  "MaxBitrate": 900000,
+                  "ParDenominator": 1,
+                  "SpatialAdaptiveQuantization": "ENABLED",
+                  "TemporalAdaptiveQuantization": "ENABLED",
+                  "FlickerAdaptiveQuantization": "DISABLED",
+                  "RateControlMode": "QVBR",
+                  "QvbrSettings": {
+                    "QvbrQualityLevel": 8
+                  },
+                  "CodecProfile": "HIGH",
+                  "AdaptiveQuantization": "MEDIUM",
+                  "SceneChangeDetect": "TRANSITION_DETECTION",
+                  "QualityTuningLevel": "SINGLE_PASS_HQ",
+                  "GopSizeUnits": "SECONDS",
+                  "ParControl": "SPECIFIED",
+                  "NumberBFramesBetweenReferenceFrames": 5
+                }
+              }
+            },
+            "AudioDescriptions": [
+              {
+                "AudioSourceName": "Audio Selector 1",
+                "CodecSettings": {
+                  "Codec": "AAC",
+                  "AacSettings": {
+                    "Bitrate": 64000,
+                    "CodingMode": "CODING_MODE_2_0",
+                    "SampleRate": 48000
+                  }
+                }
+              }
+            ],
+            "NameModifier": "/480p-$rv$kbits-$w$w-$h$h-$f$fr"
+          },
+          {
+            "ContainerSettings": {
+              "Container": "MP4",
+              "Mp4Settings": {}
+            },
+            "VideoDescription": {
+              "Width": 720,
+              "VideoPreprocessors": {
+                "Deinterlacer": {}
+              },
+              "Sharpness": 100,
+              "CodecSettings": {
+                "Codec": "H_264",
+                "H264Settings": {
+                  "ParNumerator": 1,
+                  "NumberReferenceFrames": 3,
+                  "GopSize": 3,
+                  "GopBReference": "ENABLED",
+                  "HrdBufferSize": 4000000,
+                  "MaxBitrate": 2000000,
+                  "ParDenominator": 1,
+                  "SpatialAdaptiveQuantization": "ENABLED",
+                  "TemporalAdaptiveQuantization": "ENABLED",
+                  "FlickerAdaptiveQuantization": "DISABLED",
+                  "RateControlMode": "QVBR",
+                  "QvbrSettings": {
+                    "QvbrQualityLevel": 8
+                  },
+                  "CodecProfile": "HIGH",
+                  "AdaptiveQuantization": "MEDIUM",
+                  "SceneChangeDetect": "TRANSITION_DETECTION",
+                  "QualityTuningLevel": "SINGLE_PASS_HQ",
+                  "GopSizeUnits": "SECONDS",
+                  "ParControl": "SPECIFIED",
+                  "NumberBFramesBetweenReferenceFrames": 5
+                }
+              }
+            },
+            "AudioDescriptions": [
+              {
+                "AudioSourceName": "Audio Selector 1",
+                "CodecSettings": {
+                  "Codec": "AAC",
+                  "AacSettings": {
+                    "Bitrate": 64000,
+                    "CodingMode": "CODING_MODE_2_0",
+                    "SampleRate": 48000
+                  }
+                }
+              }
+            ],
+            "NameModifier": "/720p-$rv$kbits-$w$w-$h$h-$f$fr"
+          }
+        ],
+        "OutputGroupSettings": {
+          "Type": "FILE_GROUP_SETTINGS",
+          "FileGroupSettings": {
+            "Destination": "s3://[bucket]/"
+          }
+        }
+      }
+    ],
+    "Inputs": [
+      {
+        "AudioSelectors": {
+          "Audio Selector 1": {
+            "DefaultSelection": "DEFAULT"
+          }
+        },
+        "VideoSelector": {},
+        "TimecodeSource": "ZEROBASED",
+        "FileInput": "s3://[bucket]/[srcfile]"
+      }
+    ]
+  },
+  "AccelerationSettings": {
+    "Mode": "DISABLED"
+  },
+  "StatusUpdateInterval": "SECONDS_60",
+  "Priority": 0,
+  "HopDestinations": []
+}
