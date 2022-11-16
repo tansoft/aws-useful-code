@@ -72,6 +72,7 @@ function encodetest() {
     num=$1
     echo parsing ${num} ...
 
+    #对于一些特殊视频，需要进行处理 -pix_fmt nv21 -r 30
     cmd=`echo "ffmpeg -i ${num}.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K ${num}_264_base.mp4" | base64 -w 0`
     ffmpegasync "${num}.mp4" "${num}_264_base.mp4" $cmd
 
@@ -86,7 +87,7 @@ for num in ${arr[@]}
 #for num in {1..12}
 do
     #本地ffmpeg调用
-    encodetestlocal $num
+    #encodetestlocal $num
     #在线lambda调用
-    #encodetest $num
+    encodetest $num
 done
