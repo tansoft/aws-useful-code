@@ -7,14 +7,14 @@
 * 创建 s3 桶，用于存放源文件和各种方式转码的文件。
 * 源文件建议都使用.mp4后缀，以数字命名，如：1.mp4，2.mp4，3.mp4
 * 不同方式生成的转码文件，以前面文件名_转码信息组成，如：1_vt1_static.mp4，1_vt1_1080p.mp4 等。
-* s3 桶配置自动生成vmaf结果，参见：[https://github.com/tansoft/aws-useful-code/blob/main/serverless/build-lambda-docker/easyvmaf/readme.md](https://github.com/tansoft/aws-useful-code/blob/main/serverless/build-lambda-docker/easyvmaf/readme.md)
+* s3 桶配置自动生成vmaf结果，参见：[使用Lambda触发自动生成VMAF结果](../serverless/build-lambda-docker/easyvmaf/readme.md)
 
 ## 测试内容
 
-* 通过 mediaconvert/test.sh 测试 AWS MediaConvert 相关参数。
-* 通过 tools/base_encode.sh 进行不同转码参数，不同ffmpeg版本，不同编码器等测试，如GPU，脚本放置在EC2机器上运行，也可以部署lambda函数，异步提交批量转码任务测试。
-* 通过 ai-super-resolution/test.sh，进行AI超分重建测试。
-* 通过 VT1/xlix.sh 进行 VT1 实例测试。
+* 通过 [mediaconvert/test.sh](mediaconvert/test.sh) 测试 AWS MediaConvert 相关参数。
+* 通过 [tools/base_encode.sh](tools/base_encode.sh) 进行不同转码参数，不同ffmpeg版本，不同编码器等测试，如GPU，脚本放置在EC2机器上运行，也可以部署lambda函数，异步提交批量转码任务测试。
+* 通过 [ai-super-resolution/test.sh](ai-super-resolution/test.sh)，进行AI超分重建测试。
+* 通过 [VT1/xlix.sh](VT1/xlix.sh) 进行 VT1 实例测试。
 
 ## tools 常用脚本
 
