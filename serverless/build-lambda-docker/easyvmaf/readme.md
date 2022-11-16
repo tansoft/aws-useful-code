@@ -18,10 +18,10 @@ cd ..
 ### 使用镜像创建 lambda 函数
 
 * 创建Lambda函数，选择 Container Image，输入函数名称
-* 选择镜像，easyvmaf，latest 版本
+* 选择镜像，ECR 里的 easyvmaf，latest 版本
 * 展开 修改默认执行角色(Change default execution role)，选择 从 AWS 策略模板创建新角色(Create a new role from AWS policy templates)
 * 选择 S3 只读权限（Amazon S3 object read-only permissions）（可选：建议选择部署在可访问外网的私有子网中）。
-* 创建Lambda后，在IAM控制台中找到刚才新建的权限，修改Action为s3:*，这样lambda可以把新录音上传到s3中。
+* 创建Lambda后，在IAM控制台中找到刚才新建的权限，修改Action为s3:*，这样lambda可以把新文件上传到s3中。
 
 ```json
 {
