@@ -18,7 +18,7 @@
 
 ## tools 常用脚本
 
-### base_encode.sh
+### [base_encode.sh](tools/base_encode.sh)
 
 批量进行转码测试脚本
 
@@ -30,7 +30,7 @@
 ./bash_encode.sh
 ```
 
-### diff_lr.sh
+### [diff_lr.sh](tools/diff_lr.sh)
 
 左右同框同时对比观察质量，支持url和本地文件，依赖ffmpeg和ffplay
 
@@ -38,7 +38,7 @@
 ./diff_lr.sh left.mp4 right.mp4
 ```
 
-### vmaf.sh
+### [vmaf.sh](tools/vmaf.sh)
 
 通过对比源视频和目标视频，输出vmaf得分，依赖带libvmaf的ffmpeg
 
@@ -46,6 +46,6 @@
 ./vmaf.sh 源视频 目标视频 <缩放比例，用于源视频和目标视频高宽不一样的情况，请参见脚本中的注释命令行，如：640x480>
 ```
 
-### print_result.py
+### [print_result.py](tools/print_result.py)
 
 获取所有对比结果汇总，需要依赖boto3，该脚本读取s3上，与视频文件同名的vmaf(.txt)文件进行，文件中包含vmaf跑分信息。
