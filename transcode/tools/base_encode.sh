@@ -3,7 +3,9 @@
 #ffmpeg -i 1.mp4 -c:v libx264 -crf 26 -profile:v high -b:a 96K 1_264_base.mp4
 #ffmpeg -i 1.mp4 -c:v hevc -crf 26 -profile:v main -b:a 96K 1_265_base.mp4
 
+# 指定区域信息
 region=ap-northeast-1
+# 指定上传结果S3桶
 bucket=video-transcode-202208
 
 : << EOF
@@ -87,7 +89,7 @@ for num in ${arr[@]}
 #for num in {1..12}
 do
     #本地ffmpeg调用
-    #encodetestlocal $num
+    encodetestlocal $num
     #在线lambda调用
-    encodetest $num
+    #encodetest $num
 done
