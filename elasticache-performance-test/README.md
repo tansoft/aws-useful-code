@@ -9,6 +9,7 @@ git clone https://github.com/redis/hiredis.git
 cd hiredis
 make USE_SSL=1
 sudo make install
+wget https://github.com/tansoft/aws-useful-code/raw/main/elasticache-performance-test/logic-test.cpp
 g++ -o logic-test logic-test.cpp -Wl,-Bstatic -lhiredis -Wl,-Bdynamic -ldl -lpthread -I/usr/local/include -L/usr/local/lib
 ```
 
