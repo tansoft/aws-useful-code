@@ -16,6 +16,13 @@ g++ -o logic-test logic-test.cpp -Wl,-Bstatic -lhiredis -Wl,-Bdynamic -ldl -lpth
 # Test
 
 ```bash
-for i in {1..10}; do eval "nohup ./logic-test test-redis-001.xxxxx.0001.apse1.cache.amazonaws.com w &"; done
-for i in {1..2}; do eval "nohup ./logic-test test-redis-001.xxxxx.0001.apse1.cache.amazonaws.com &"; done
+# one
+REDIS_SERVER=test-redis.xxxxx.ng.0001.apse1.cache.amazonaws.com
+for i in {1..10}; do eval "nohup ./logic-test ${REDIS_SERVER} w >> log-one-w.txt 2>&1 &"; done
+for i in {1..2}; do eval "nohup ./logic-test ${REDIS_SERVER} r >> log-one-r.txt 2>&1 &"; done
+
+# two
+REDIS_SERVER=test-redis-2.xxxxx.ng.0001.apse1.cache.amazonaws.com
+for i in {1..10}; do eval "nohup ./logic-test ${REDIS_SERVER} w >> log-two-w.txt 2>&1 &"; done
+for i in {1..2}; do eval "nohup ./logic-test ${REDIS_SERVER} r >> log-two-r.txt 2>&1 &"; done
 ```
