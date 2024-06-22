@@ -16,6 +16,6 @@ g++ -o logic-test logic-test.cpp -Wl,-Bstatic -lhiredis -Wl,-Bdynamic -ldl -lpth
 # Test
 
 ```bash
-for i in {1..10}; do ./logic-test w; done
-for i in {1..2}; do ./logic-test; done
+for i in {1..10}; do eval "./logic-test w &"; done
+for i in {1..2}; do eval "./logic-test &"; done
 ```
