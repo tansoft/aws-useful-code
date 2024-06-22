@@ -16,6 +16,6 @@ g++ -o logic-test logic-test.cpp -Wl,-Bstatic -lhiredis -Wl,-Bdynamic -ldl -lpth
 # Test
 
 ```bash
-for i in {1..10}; do eval "./logic-test w &"; done
-for i in {1..2}; do eval "./logic-test &"; done
+for i in {1..10}; do eval "nohup ./logic-test test-redis-001.xxxxx.0001.apse1.cache.amazonaws.com w &"; done
+for i in {1..2}; do eval "nohup ./logic-test test-redis-001.xxxxx.0001.apse1.cache.amazonaws.com &"; done
 ```

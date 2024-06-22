@@ -95,13 +95,18 @@ void test_range(redisContext* c, const char *key) {
 int main(int argc, char *argv[]) {
     std::time_t t, last = std::time(0);
     char ts_str[21];
-    char mode = (argc > 1 && argv[1][0] == 'w') ? 'w' : 'r';
+    char mode = (argc > 2 && argv[2][0] == 'w') ? 'w' : 'r';
     pid_t pid = getpid();
+
+    if (argc < 2) {
+        std::cout << "usage: ./logic-test redis-server [r|w] " << std::endl;
+        return 1;
+    }
 
     std::cout << "Start test " << mode << std::endl;
 
     /* Create Redis context and establish connection */
-    redisContext* c = redisConnect("test-redis-001.gfg2gn.0001.apse1.cache.amazonaws.com", 6379);
+    redisContext* c = redisConnect(argv[1], 6379);
     if (c == NULL || c->err) {
         std::cerr << "Error Redis context and establish connection." << std::endl;
         exit(1);
