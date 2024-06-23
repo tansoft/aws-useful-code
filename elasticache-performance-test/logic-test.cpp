@@ -4,6 +4,8 @@
 #include <ctime>
 #include <chrono>
 
+//#define PEAK_OPTIMIZATION
+
 const char* g_data12k = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
     "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
     "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
@@ -31,7 +33,6 @@ void test_write(redisContext* c, const char *key) {
             exit(1);
         }
         freeReplyObject(set_reply);
-
         redisReply* expire_reply = (redisReply*)redisCommand(c, "EXPIRE %s%03d %d", key, i, g_expiretime);
         if (expire_reply == NULL || expire_reply->type == REDIS_REPLY_ERROR) {
             std::cerr << "EXPIRE command failed: " << c->errstr << std::endl;
@@ -40,7 +41,6 @@ void test_write(redisContext* c, const char *key) {
             exit(1);
         }
         freeReplyObject(expire_reply);
-
         redisReply* zset_reply = (redisReply*)redisCommand(c, "ZADD zset_key %s%03d %s%03d", key, i, key, i);
         if (zset_reply == NULL || set_reply->type == REDIS_REPLY_ERROR) {
             std::cerr << "ZSET command failed: " << c->errstr << std::endl;
@@ -49,7 +49,9 @@ void test_write(redisContext* c, const char *key) {
             exit(1);
         }
         freeReplyObject(zset_reply);
-        //usleep(1);
+#ifdef PEAK_OPTIMIZATION
+        usleep(rand()%1000);
+#endif
     }
 }
 
@@ -66,7 +68,9 @@ void test_read(redisContext* c, const char *key) {
             std::cout << "GET operation successful. Value: " << get_reply->element[j]->str << std::endl;
         }*/
         freeReplyObject(get_reply);
-        //usleep(1);
+#ifdef PEAK_OPTIMIZATION
+        usleep(rand()%1000);
+#endif
     }
 }
 
@@ -88,6 +92,9 @@ void test_range(redisContext* c, const char *key) {
             exit(1);
         }
         freeReplyObject(rem_reply);
+#ifdef PEAK_OPTIMIZATION
+        usleep(rand()%1000);
+#endif
     }
     freeReplyObject(range_reply);
 }
@@ -97,13 +104,19 @@ int main(int argc, char *argv[]) {
     char ts_str[21];
     char mode = (argc > 2 && argv[2][0] == 'w') ? 'w' : 'r';
     pid_t pid = getpid();
+    int baseoff = 0;
 
     if (argc < 2) {
         std::cout << "usage: ./logic-test redis-server [r|w] " << std::endl;
         return 1;
     }
 
-    std::cout << "Start test " << mode << std::endl;
+#ifdef PEAK_OPTIMIZATION
+    srand((unsigned)pid + (unsigned)std::time(0) * 10);
+    baseoff = rand() % 1000;
+    usleep(rand() % 1000000);
+#endif
+    std::cout << "Start test " << mode << " with offest: " << baseoff << std::endl;
 
     /* Create Redis context and establish connection */
     redisContext* c = redisConnect(argv[1], 6379);
@@ -112,10 +125,16 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     while(true) {
+#ifdef PEAK_OPTIMIZATION
+        std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+        now -= std::chrono::milliseconds(baseoff);
+        t = std::chrono::system_clock::to_time_t(now);
+#else
         t = std::time(0);
+#endif
         // 如果执行时间比上次超出了一秒，证明出现性能问题
         if (t > last + 1) {
-            std::cerr << "Performance problem found." << std::endl;
+            std::cerr << "Performance problem found: " << t << " vs " << (last + 1) << std::endl;
             exit(1);
         }
         if (t > last) {
@@ -126,12 +145,12 @@ int main(int argc, char *argv[]) {
                 std::chrono::milliseconds ts2 = std::chrono::duration_cast< std::chrono::milliseconds >(std::chrono::system_clock::now().time_since_epoch());
                 test_read(c, ts_str);
                 std::chrono::milliseconds ts3 = std::chrono::duration_cast< std::chrono::milliseconds >(std::chrono::system_clock::now().time_since_epoch());
-                std::cerr << "pid:" << pid << " ts:" << t << " write:" << ts2.count() - ts1.count() << "ms read:" << ts3.count() - ts2.count() << "ms" << std::endl;
+                std::cerr << "[" << ts3.count() << "] pid:" << pid << " ts:" << t << " write:" << ts2.count() - ts1.count() << "ms read:" << ts3.count() - ts2.count() << "ms baseoff:" << baseoff << std::endl;
             } else {
                 std::chrono::milliseconds ts1 = std::chrono::duration_cast< std::chrono::milliseconds >(std::chrono::system_clock::now().time_since_epoch());
                 test_range(c, ts_str);
                 std::chrono::milliseconds ts2 = std::chrono::duration_cast< std::chrono::milliseconds >(std::chrono::system_clock::now().time_since_epoch());
-                std::cerr << "pid:" << pid << " ts:" << t << " range:" << ts2.count() - ts1.count() << "ms" << std::endl;
+                std::cerr << "[" << ts2.count() << "] pid:" << pid << " ts:" << t << " range:" << ts2.count() - ts1.count() << "ms baseoff:" << baseoff << std::endl;
             }
             last = t;
         }
