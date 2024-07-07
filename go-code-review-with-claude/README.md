@@ -21,7 +21,7 @@ python3 check.py -f samples/meaningless-multiple-judgments.go -c 0 -r us-east-1 
 
 ```
 
-## 提示词0 的效果:
+## 提示词0 的效果，强制输出为json格式，便于处理:
 
 ```json
 [
@@ -46,23 +46,36 @@ python3 check.py -f samples/meaningless-multiple-judgments.go -c 0 -r us-east-1 
 ]
 ```
 
-## 提示词1 的效果:
+## 提示词1 的效果，偏重于描述 CodeReview 的职能:
 
-<code>这段代码存在以下问题:
+```go
+// 简化错误处理逻辑
+if err := redisClient.Get(ctx, _key).Err(); err != nil {
+    if err != redis.Nil {
+        return nil, err
+    }
+    return nil, nil
+}
 
-1. 多重判断条件过于复杂,可读性差。
-2. 错误处理逻辑混乱,难以维护。
-3. 缺少必要的错误处理,如redisClient初始化失败等情况。
-4. 变量命名不规范,如_key、gameHistory等。
-5. 缺少必要的注释,代码可读性差。
+// 使用更清晰的变量名
+value, err := redisClient.Get(ctx, _key).Bytes()
+if err != nil {
+    // 处理错误
+    return nil, err
+}
 
-建议:
-1. 简化错误判断逻辑,避免过多嵌套。
-2. 遵循Go语言规范,提高代码可读性。
-3. 添加必要的错误处理和注释。
-4. 考虑使用第三方库简化Redis操作。
+// 解码值
+var gameHistory GameHistory
+if err := json.Unmarshal(value, &gameHistory); err != nil {
+    // 处理错误
+    return nil, err
+}
 
-## 提示词2 的效果:
+// 返回解码后的值
+return gameHistory, nil
+```
+
+## 提示词2 的效果，偏重于找bug:
 
 这段代码存在以下几个问题:
 
@@ -140,7 +153,7 @@ func main() {
 
 通过这些修改,代码的逻辑更加清晰,错误处理也更加完善。同时,代码遵循了 Go 语言的最佳实践。
 
-## 提示词3 的效果:
+## 提示词3 的效果，偏重于优化性能:
 
 这段代码存在以下几个问题,可以进行优化:
 
