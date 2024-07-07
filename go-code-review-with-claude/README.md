@@ -1,6 +1,6 @@
 # Go 测试框架
 
-请参考 [check.py](check.py) 进行简单的设置即可进行试验。
+请参考 [check.py](check.py) 进行简单的设置即可进行试验。[samples](samples) 目录下有一些例子。
 
 ```bash
 usage: check.py [-h] [-f FILE] [-c CASE] [-r REGION] [-m MODEL]
@@ -15,6 +15,10 @@ options:
                         Specify endpoint region, default: us-east-1
   -m MODEL, --model MODEL
                         Specify model name, default: claude-3-sonnet
+
+如：
+python3 check.py -f samples/meaningless-multiple-judgments.go -c 0 -r us-east-1 -m claude-3-sonnet
+
 ```
 
 ## 提示词0 的效果:
