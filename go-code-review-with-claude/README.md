@@ -21,6 +21,8 @@ python3 check.py -f samples/meaningless-multiple-judgments.go -c 0 -r us-east-1 
 
 ```
 
+针对 [samples/meaningless-multiple-judgments.go](samples/meaningless-multiple-judgments.go) 文件，做了以下的测试：
+
 ## 提示词0 的效果，强制输出为json格式，便于处理:
 
 ```json
