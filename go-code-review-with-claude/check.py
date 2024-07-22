@@ -93,7 +93,7 @@ Do not include any other text formatings.
 Please provide modification suggestions.
 Only answer questions related to the code.
 ''',
-# case 2，偏重于优化性能
+# case 2，偏重于找bug
 '''
 Your task is to analyze the provided Golang code snippet, identify any bugs or errors present,
 and provide a corrected version of the code that resolves these issues. 
