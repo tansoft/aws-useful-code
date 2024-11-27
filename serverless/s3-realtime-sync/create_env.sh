@@ -118,4 +118,4 @@ aws lambda create-event-source-mapping --function-name "${lambda_name}" \
     --batch-size 1 --event-source-arn arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name} --profile "${src_profile}"
 
 aws s3api put-bucket-notification-configuration \
-    --bucket "${src_bucket}" --notification-configuration "{\"QueueConfigurations\":[{\"QueueArn\": \"arn:aws:sqs:${src_aws_region}:${src_account_id}:${sqs_name}\",\"Events\": [\"s3:ObjectCreated:*\",\"s3:ObjectRemoved:*\"]}]}" --profile "${src_profile}"
+    --bucket "${src_bucket}" --notification-configuration "{\"QueueConfigurations\":[{\"QueueArn\": \"arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name}\",\"Events\": [\"s3:ObjectCreated:*\",\"s3:ObjectRemoved:*\"]}]}" --profile "${src_profile}"
