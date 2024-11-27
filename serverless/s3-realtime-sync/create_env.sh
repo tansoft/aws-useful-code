@@ -49,8 +49,10 @@ if [ "$1" == "--delete" ]; then
     # 执行删除操作
     echo "Performing delete action..."
 
-    # aws s3api put-bucket-notification-configuration --bucket "${src_bucket}" --notification-configuration "{\"QueueConfigurations\":[{\"QueueArn\": \"arn:aws:sqs:${src_aws_region}:${src_account_id}:${sqs_name}\",\"Events\": \"[s3:ObjectCreated:*\"]}]}"
-    # aws lambda delete-event-source-mapping --uuid xxx
+    aws s3api put-bucket-notification-configuration --bucket "${src_bucket}" --notification-configuration "{}" --profile ${src_profile}
+
+    UUID=$(aws lambda list-event-source-mappings --function-name "${lambda_name}" --event-source-arn arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name} --query EventSourceMappings[0].UUID --output text --profile ${src_profile})
+    aws lambda delete-event-source-mapping --uuid ${UUID} --profile ${src_profile}
     aws lambda delete-function --function-name "${lambda_name}" --profile ${src_profile}
 
     aws sqs delete-queue --queue-url https://sqs.${src_aws_region}.amazonaws.com/${src_account_id}/${sqs_name} --profile ${src_profile}
@@ -92,7 +94,7 @@ aws iam attach-role-policy --role-name ${lambda_name}_role --policy-arn arn:${aw
 aws dynamodb create-table --table-name ${ddb_name} --attribute-definitions AttributeName=Key,AttributeType=S --key-schema AttributeName=Key,KeyType=HASH --billing-mode PAY_PER_REQUEST --query TableDescription.TableStatus --profile "${src_profile}"
 while :
 do
-  status=`aws dynamodb describe-table --table-name ${ddb_name} --query Table.TableStatus --output text --profile "${src_profile}"`
+  status=$(aws dynamodb describe-table --table-name ${ddb_name} --query Table.TableStatus --output text --profile "${src_profile}")
   if [ "$status" == 'ACTIVE' ]; then
     break
   fi
@@ -103,12 +105,8 @@ aws dynamodb update-table --table-name ${ddb_name} --attribute-definitions Attri
     '[{"Create":{"IndexName":"desBucket-index","KeySchema":[{"AttributeName": "desBucket","KeyType": "HASH"}],"Projection":{"ProjectionType":"INCLUDE","NonKeyAttributes":["desKey","versionId"]}}}]'
 
 aws sqs create-queue --queue-name ${sqs_name}_DLQ  --profile "${src_profile}" --attributes "{\"VisibilityTimeout\":\"900\",\"MessageRetentionPeriod\":\"1209600\"}"
+# https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/ways-to-add-notification-config-to-bucket.html#step2-enable-notification
 aws sqs create-queue --queue-name ${sqs_name}  --profile "${src_profile}" --attributes "{\"VisibilityTimeout\":\"900\",\"MessageRetentionPeriod\":\"1209600\",\"RedrivePolicy\":\"{\\\"maxReceiveCount\\\":\\\"60\\\",\\\"deadLetterTargetArn\\\":\\\"arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name}_DLQ\\\"}\",\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Id\\\":\\\"SQSQueuePermissions\\\",\\\"Statement\\\":[{\\\"Sid\\\":\\\"SQSQueuePermissions\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"s3.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name}\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:${aws_prefix}:s3:::${src_bucket}\\\"},\\\"StringEquals\\\":{\\\"aws:SourceAccount\\\":\\\"${src_account_id}\\\"}}}]}\"}"
-
-
-#,\"Policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Id\\\":\\\"SQSQueuePermissions\\\",\\\"Statement\\\":[{\\\"Sid\\\":\\\"SQSQueuePermissions\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Service\\\":\\\"s3.amazonaws.com\\\"},\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Resource\\\":\\\"arn:${aws_prefix}:sqs:${src_aws_region}:${src_account_id}:${sqs_name}\\\",\\\"Condition\\\":{\\\"ArnLike\\\":{\\\"aws:SourceArn\\\":\\\"arn:${aws_prefix}:s3:::${src_bucket}\\\"},\\\"StringEquals\\\":{\\\"aws:SourceAccount\\\":\\\"${src_account_id}\\\"}}}]}
-
-#"
 
 aws lambda create-function --function-name "${lambda_name}" --runtime python3.12 \
     --zip-file fileb://s3_migration_worker_code.zip --handler lambda_function_worker.lambda_handler \
