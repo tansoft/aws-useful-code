@@ -1,0 +1,53 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: exist-private-vpc
+  region: us-east-1
+
+managedNodeGroups:
+  - name: eks-mng
+    instanceType: m6i.large
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 5
+    privateNetworking: true
+    volumeSize: 100
+    tags:
+      ENV: PRD
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+  - metadata:
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    wellKnownPolicies:
+      awsLoadBalancerController: true
+
+addons:
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+
+cloudWatch:
+ clusterLogging:
+   enableTypes: ["*"]
+   logRetentionInDays: 30
+
+vpc:
+  subnets:
+    public:
+      us-east-1a:
+        id: "subnet-0b48a9513667f5b9f"
+      us-east-1b:
+        id: "subnet-01a77af4a21173823"
+      us-east-1c:
+        id: "subnet-0fcfaa8a309d7a2a6"
+    private:
+      us-east-1a:
+        id: "subnet-003c46a23c2905f7d"
+      us-east-1b:
+        id: "subnet-06a0baa3cd7c962b7"
+      us-east-1c:
+        id: "subnet-0abb461b265b1956b"

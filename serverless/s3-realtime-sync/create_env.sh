@@ -71,7 +71,7 @@ if [ "$1" == "--delete" ]; then
 fi
 
 aws ssm put-parameter --name "${ssm_credentials}" \
-    --value "{\"aws_access_key_id\":\"$aws_access_key_id\",\"aws_secret_access_key\":\"$aws_secret_access_key\",\"region\":\"$aws_region\"}" \
+    --value "{\"aws_access_key_id\":\"$dist_aws_access_key_id\",\"aws_secret_access_key\":\"$dist_aws_secret_access_key\",\"region\":\"$dist_aws_region\"}" \
     --type "SecureString" --tier "Standard" \
     --key-id "alias/aws/ssm" --profile "${src_profile}"
 
@@ -79,7 +79,6 @@ aws ssm put-parameter --name "${ssm_credentials}" \
 sed -e "s/\${aws_prefix}/${aws_prefix}/" \
     -e "s/\${src_aws_region}/${src_aws_region}/" \
     -e "s/\${src_account_id}/${src_account_id}/" \
-    -e "s/\${aws_access_key_id}/${aws_access_key_id}/" \
     -e "s/\${src_bucket}/${src_bucket}/" \
     -e "s/\${ssm_credentials}/${ssm_credentials}/" \
     -e "s/\${ddb_name}/${ddb_name}/" \

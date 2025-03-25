@@ -1,0 +1,162 @@
+---
+# Nginx Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: demo
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+---
+# Service https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    # 公网lb
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    #service.beta.kubernetes.io/aws-load-balancer-eip-allocations: eipalloc-xyz, eipalloc-zzz
+
+    # 双栈lb
+    #service.beta.kubernetes.io/aws-load-balancer-ip-address-type: dualstack
+    #service.beta.kubernetes.io/aws-load-balancer-ipv6-addresses: 2600:1f13:837:8501::1, 2600:1f13:837:8504::1
+
+    # 私网lb
+    #service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    #service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: 192.168.10.15, 192.168.32.16
+
+    # 属性
+    #  后端目标类型：instance 和 ip
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    #  enable NLB deletion protection
+    #service.beta.kubernetes.io/aws-load-balancer-attributes: deletion_protection.enabled=true
+    #  enable cross zone load balancing
+    #service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+    #  enable client availability zone affinity
+    #service.beta.kubernetes.io/aws-load-balancer-attributes: dns_record.client_routing_policy=availability_zone_affinity
+    #  指定允许访问ip范围
+    #service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/24
+    #  指定安全组
+    #service.beta.kubernetes.io/aws-load-balancer-security-groups: sg-xxxx
+    #  指定子网组
+    #service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-xxxx, mySubnet
+
+    # 目标组属性
+    #  set the deregistration delay to 120 seconds (available range is 0-3600 seconds)
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.timeout_seconds=120
+    #  enable source IP affinity
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: stickiness.enabled=true,stickiness.type=source_ip
+    #  enable connection termination on deregistration
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.connection_termination.enabled=true
+    #  enable client IP preservation
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: preserve_client_ip.enabled=true
+    #  disable immediate connection termination for unhealthy targets and configure a 30s draining interval (available range is 0-360000 seconds)
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: target_health_state.unhealthy.connection_termination.enabled=false,target_health_state.unhealthy.draining_interval_seconds=30
+
+    # 监听器属性
+    # configure TCP idle timeout value
+    #service.beta.kubernetes.io/aws-load-balancer-listener-attributes.TCP-80: tcp.idle_timeout.seconds=400
+
+    # tag
+    #service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: Environment=dev,Team=test
+
+    # ssl证书设置
+    #service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-west-2:xxxxx:certificate/xxxxxxx
+    #service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    #  如果后端是ssl端口，设置 ssl
+    #service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+
+    # 健康检查 可以指定 tcp/http/https
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
+    #  可以直接指定流量端口：traffic-port 或指定端口 80
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "80"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "3"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "3"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-success-codes: 200-399
+
+    # proxy 代理
+    #service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+    #service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: proxy_protocol_v2.enabled=true
+
+  name: nginx-service
+  namespace: demo
+  labels:
+    app: nginx
+spec:
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 80
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 443
+  selector:
+    app: nginx
+  sessionAffinity: None
+  type: LoadBalancer
+  loadBalancerClass: service.k8s.aws/nlb
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: demo
+  name: nginx-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:xxxx:certificate/xxxxxx
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+spec:
+  ingressClassName: alb
+  defaultBackend:
+    service:
+      name: nginx-service
+      port:
+        number: 80
+  rules:
+    - http:
+        paths:
+          - path: /users/*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: user-service
+                port:
+                  number: 80
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: default-service
+                port:
+                  number: 80
