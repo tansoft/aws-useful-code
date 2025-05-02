@@ -1,21 +1,17 @@
 #!/bin/bash
 set -e
-dnf update -y
-dnf install -y git nodejs npm make gcc g++
-dnf copr enable -y @caddy/caddy epel-9-`uname -m`
-dnf install -y caddy
-systemctl enable --now caddy
 
-tee /etc/caddy/Caddyfile <<EOF
+sudo dnf update -y
+sudo dnf install -y git nodejs npm make gcc g++
+sudo dnf copr enable -y @caddy/caddy epel-9-`uname -m`
+sudo dnf install -y caddy
+sudo systemctl enable --now caddy
+
+sudo tee /etc/caddy/Caddyfile <<EOF
 http://${DomainName} {
   reverse_proxy 127.0.0.1:8889
 }
 EOF
-
-systemctl restart caddy
-
-cat <<"EOT" | sudo -E -H -u ec2-user bash
-set -e
 
 mkdir -p ~/environment
 
@@ -59,6 +55,5 @@ echo '{ "query": { "folder": "/home/ec2-user/environment" } }' > ~/.local/share/
 code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools --force
 code-server --install-extension redhat.vscode-yaml --force
 
-EOT
-
-systemctl restart code-server@ec2-user
+sudo systemctl restart caddy
+sudo systemctl restart code-server@ec2-user
