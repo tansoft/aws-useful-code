@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-cloud-init status --wait
 dnf update -y
 dnf install -y git nodejs npm make gcc g++
 dnf copr enable -y @caddy/caddy epel-9-`uname -m`
