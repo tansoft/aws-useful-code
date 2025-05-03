@@ -10,7 +10,7 @@ sudo dnf install -y caddy
 sudo systemctl enable --now caddy
 
 sudo tee /etc/caddy/Caddyfile <<EOF
-http://${DomainName} {
+http://${DomainName} http://*.${DomainName} {
   reverse_proxy 127.0.0.1:8889
 }
 EOF
