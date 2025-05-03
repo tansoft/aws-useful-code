@@ -1,5 +1,7 @@
 #!/bin/bash
 set -e
+DomainName=${1:-dev.example.com}
+CodeServerPassword=${2:-simplepass}
 
 sudo dnf update -y
 sudo dnf install -y git nodejs npm make gcc g++
