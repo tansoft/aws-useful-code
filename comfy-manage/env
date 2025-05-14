@@ -1,0 +1,4 @@
+ENV=base
+PREFIX=simple-comfy
+ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
+S3_BUCKET=${PREFIX}-${ACCOUNT_ID}-${ENV}

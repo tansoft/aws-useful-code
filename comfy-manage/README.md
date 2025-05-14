@@ -1,0 +1,181 @@
+# ComfyUI 简单管理
+
+这是一个简单的 ComfyUI 任务管理和弹性的Demo
+
+* 启动ec2实例，并制作comfy环境，这里使用Ubuntu 24.04，EC2 的安全组需要开放 22 以及 8848 端口，EBS 选择 gp3, 200G。
+
+```
+`# 如果是 ssm 登录，先切换到 ubuntu 账号`
+`sudo ``-``i ``-``u ubuntu`
+
+`sudo apt``-``get`` update ``-``y`
+
+`# 安装 aws cli`
+`sudo apt install unzip`
+`curl ``"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"`` ``-``o ``"awscliv2.zip"`
+`unzip awscliv2``.``zip`
+`sudo ``./``aws``/``install`
+
+`# 安装 nvdia driver`
+`sudo apt``-``get`` install ``-``y gcc make build``-``essential`
+`sudo apt``-``get`` upgrade ``-``y linux``-``aws`
+`sudo reboot`
+
+`# 如果是 ssm 登录，先切换到 ubuntu 账号`
+`sudo ``-``i ``-``u ubuntu`
+
+# 继续安装 nvdia driver
+cat << EOF | sudo tee --append /etc/modprobe.d/blacklist.conf
+blacklist vga16fb
+blacklist nouveau
+blacklist rivafb
+blacklist nvidiafb
+blacklist rivatv
+EOF
+sudo vi /etc/default/grub
+# 需要修改这一行：
+# GRUB_CMDLINE_LINUX="rdblacklist=nouveau"
+`sudo update``-``grub`
+`aws s3 cp ``--``recursive s3``:``//nvidia-gaming/linux/latest/ .`
+`unzip ``*``Gaming``-``Linux``-``Guest``-``Drivers``.``zip ``-``d nvidia``-``drivers`
+`chmod ``+``x nvidia``-``drivers``/``NVIDIA``-``Linux``-``x86_64``*-``grid``.``run`
+`sudo nvidia``-``drivers``/``NVIDIA``-``Linux``-``x86_64``*.``run`
+# 接受默认选项
+`cat ``<<`` EOF ``|`` sudo tee ``-``a ``/``etc``/``nvidia``/``gridd``.``conf`
+`vGamingMarketplace``=``2`
+`EOF`
+`sudo curl ``-``o ``/``etc``/``nvidia``/``GridSwCert``.``txt ``"https://nvidia-gaming.s3.amazonaws.com/GridSwCert-Archive/GridSwCertLinux_2024_02_22.cert"`
+`sudo touch ``/``etc``/``modprobe``.``d``/``nvidia``.``conf`
+`echo ``"options nvidia NVreg_EnableGpuFirmware=0"`` ``|`` sudo tee ``--``append ``/``etc``/``modprobe``.``d``/``nvidia``.``conf`
+`sudo reboot`
+
+# 如果是 ssm 登录，先切换到 ubuntu 账号
+sudo -i -u ubuntu
+
+`sudo apt``-``get`` install ``-``y nvidia``-``cuda``-``toolkit`
+`sudo apt``-``get`` install ``-``y ubuntu``-``drivers``-``common`
+`sudo ubuntu``-``drivers autoinstall`
+`sudo reboot`
+
+# 如果是 ssm 登录，先切换到 ubuntu 账号
+sudo -i -u ubuntu
+
+`# 安装 cloudwatch agent，用于弹性指标判断`
+`wget https``:``//amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb`
+`sudo dpkg ``-``i ``-``E`` amazon``-``cloudwatch``-``agent``.``deb`
+`TOKEN``=``$``(``curl ``-``s ``-``X PUT ``"http://169.254.169.254/latest/api/token"`` ``-``H ``"X-aws-ec2-metadata-token-ttl-seconds: 21600"``)`
+`INSTANCE_ID``=``$``(``curl ``-``s ``-``H ``"X-aws-ec2-metadata-token: $TOKEN"`` http``:``//169.254.169.254/latest/meta-data/instance-id)`
+mkdir /home/ubuntu/cloudwatch-agent
+cat > `/``home``/``ubuntu``/``cloudwatch``-``agent``/``agent``.``json ``<<``EOF`
+`{`
+`  ``"metrics"``:`` ``{`
+`    ``"append_dimensions"``:`` ``{`
+`      ``"InstanceId"``:`` ``"${INSTANCE_ID}"`
+`    ``},`
+`    ``"metrics_collected"``:`` ``{`
+`      ``"nvidia_gpu"``:`` ``{`
+`        ``"measurement"``:`` ``[`
+`          ``"utilization_gpu"``,`
+`          ``"utilization_memory"``,`
+`          ``"memory_total"``,`
+`          ``"memory_used"``,`
+`          ``"memory_free"`
+`        ``],`
+`        ``"metrics_collection_interval"``:`` ``30`
+`      ``}`
+`    ``}`
+`  ``}`
+`}`
+EOF
+`sudo ``/``opt``/``aws``/``amazon``-``cloudwatch``-``agent``/``bin``/``amazon``-``cloudwatch``-``agent``-``ctl ``-``a fetch``-``config ``-``m ec2 ``-``c file``:``/home/``ubuntu``/``cloudwatch``-``agent``/``agent``.``json ``-``s`
+
+# 指定python环境
+`sudo apt install ``-``y python3``.``12``-``venv`
+`python3 ``-``m venv venv`
+`.`` venv``/``bin``/``activate`
+`pip install comfy``-``cli`
+# 一路y即可
+`comfy install`
+
+# 安装 S3 驱动
+wget https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
+sudo apt-get install ./mount-s3.deb -y
+
+# 指定用于存放模型的s3桶名称，可以根据需要调整名字前缀
+ACCOUNT_ID=``aws sts get-caller-identity --query "Account" --output text``
+S3_DATA_NAME="comfy-data-${ACCOUNT_ID}"
+
+cat << EOF > /home/ubuntu/env
+ENV=base
+S3_BUCKET=${S3_DATA_NAME}-\${ENV}
+EOF
+
+# 使用默认的model数据创建s3
+source /home/ubuntu/env
+aws s3api create-bucket --bucket ${S3_BUCKET}
+mkdir /home/ubuntu/comfy/s3
+mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3
+# 注意这里会高度同步，如果s3本身有数据，会被删除
+aws s3 sync /home/ubuntu/comfy/ComfyUI/models s3://${S3_BUCKET}/models --delete
+aws s3 sync /home/ubuntu/comfy/ComfyUI/input s3://${S3_BUCKET}/input --delete
+aws s3 sync /home/ubuntu/comfy/ComfyUI/output s3://${S3_BUCKET}/output --delete
+# 这里可以把本地目录清空以节省磁盘空间，加快实例启动速度
+rm -rf /home/ubuntu/comfy/ComfyUI/models /home/ubuntu/comfy/ComfyUI/input /home/ubuntu/comfy/ComfyUI/output
+ln -s /home/ubuntu/comfy/s3/input /home/ubuntu/comfy/ComfyUI/
+ln -s /home/ubuntu/comfy/s3/output /home/ubuntu/comfy/ComfyUI/
+ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
+
+# 相关程序文件
+
+
+# 启动服务
+ cat << EOF | sudo tee /etc/systemd/system/comfyui.service
+[Unit]
+Description=ComfyUI Service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/home/ubuntu/comfy/ComfyUI
+ExecStart=bash /home/ubuntu/comfy/start_service.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable comfyui.service
+sudo systemctl start comfyui.service
+
+
+# 查看服务状态和日志
+`systemctl status comfyui`
+`journalctl ``-``f ``-``u comfyui`
+
+```
+
+## 测试工作流
+
+
+
+```
+wget "https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors
+wget "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/vae/kl-f8-anime2.ckpt?download=true" -O /home/ubuntu/comfy/ComfyUI/models/vae/kl-f8-anime2.ckpt
+wget "https://huggingface.co/ac-pill/upscale_models/resolve/main/RealESRGAN_x4plus_anime_6B.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/upscale_models/RealESRGAN_x4plus_anime_6B.pth
+wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11f1e_sd15_tile.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/controlnet/control_v11f1e_sd15_tile.pth
+wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
+```
+
+
+
+## 参考链接：
+
+* https://aws.amazon.com/cn/blogs/china/using-ec2-to-build-comfyui-and-combine-it-with-krita-practice/
+* https://docs.aws.amazon.com/zh_cn/AmazonCloudWatch/latest/monitoring/download-cloudwatch-agent-commandline.html
+* https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/install-nvidia-driver.html#nvidia-gaming-driver
+* https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/mountpoint-installation.html#mountpoint.install.deb
+
+实现create_env.sh，功能是通过env文件获取参数，指定镜像AMI创建弹性伸缩组、S3、sqs队列
+实现parse_job.py，功能是从sqs中获取任务，并进行http post提交，成功后删除sqs队列。
+实现send_job.py，功能是把json任务往sqs进行提交，并判断sqs中队列数，和ec2的弹性伸缩组当前实例数，如果sqs有队列，实例为0，需要修改实例数为1，另外判断队列中个数/实例数如果大于3，则扩容，小于3则缩容，扩展冷却时间60秒，缩容冷却时间120秒
