@@ -111,6 +111,9 @@ wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage
 chmod +x /home/ubuntu/comfy/start_service.sh
 chmod +x /home/ubuntu/comfy/create_env.sh
 chmod +x /home/ubuntu/comfy/delete_env.sh
+cd /home/ubuntu/comfy/
+# 注意应该在上面的venv环境中执行
+pip install boto3
 
 # 使用默认的model数据创建 s3 基础环境 base
 source /home/ubuntu/env
@@ -197,12 +200,25 @@ Adjusted ASG capacity to 1
 # 可以看到机器已经启动
 ```
 
-观察机器启动后的处理日志：
+* 观察机器启动后的处理日志：
 
 ```bash
 ```
 
-（可选）可以在parse_job中增加处理完成的通知代码
+*（可选）可以在parse_job中增加处理完成的通知代码
+
+* 可以直接调整弹性伸缩组的设置：
+
+```bash
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name simple-comfy-<ENV> --min-size 0 --max-size 5 --desired-capacity 1
+```
+
+## 删除环境
+
+```bash
+# 需要注意弹性伸缩组是异步删除的，如果刚删除完，又马上创建相同的名字的环境，会冲突，需要先等待原来的环境删除完成。
+./delete_env.sh pro
+```
 
 ## 参考链接：
 

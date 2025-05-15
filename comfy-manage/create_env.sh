@@ -50,6 +50,7 @@ echo "SUBNET_ID: ${AMI_ID}"
 USER_DATA=`cat << EOF | base64 --wrap 0
 #!/bin/bash
 sed -i 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env
+systemctl restart comfyui.service
 EOF`
 
 # 创建启动模板
