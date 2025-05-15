@@ -103,12 +103,12 @@ sudo apt-get install ./mount-s3.deb -y
 
 # 下载相关程序文件，注意env里的变量有多个地方使用了，如果修改需要全部替换一下
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/env -O /home/ubuntu/comfy/env
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_start.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_service.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/comfy_utils.py -O /home/ubuntu/comfy/comfy_utils.py
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/parse_job.py -O /home/ubuntu/comfy/parse_job.py
-chmod +x /home/ubuntu/comfy/start_start.sh
-chmoe +x /home/ubuntu/comfy/create_env.sh
+chmod +x /home/ubuntu/comfy/start_service.sh
+chmod +x /home/ubuntu/comfy/create_env.sh
 
 # 使用默认的model数据创建 s3 基础环境 base
 source /home/ubuntu/env

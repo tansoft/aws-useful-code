@@ -3,20 +3,21 @@
 # ./create_env.sh PRO <i-06fxxxxx>
 set -e
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <instance_id> <environment>"
+if [ -z "$1" ]; then
+    echo "Please specify an environment name. usage: ./create_env.sh PRO <i-06fxxxxx>"
     exit 1
 fi
 
-INSTANCE_ID=${1:-}
-ENV=${2:base}
+ENV=$1
+INSTANCE_ID=${2:-}
 
 if [ -z "$INSTANCE_ID" ]; then
     TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
     INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
     if [ -z "$INSTANCE_ID" ]; then
-    echo instance_id not found
-    exit 1
+        echo instance_id not found
+        exit 1
+    fi
 fi
 
 # 因为 ENV 是单独指定的，所以其他对应的值不使用env文件取
@@ -37,9 +38,8 @@ SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Rese
 # 镜像启动时切换到环境
 USER_DATA=`cat | base64 --wrap 0 <<EOF
 #!/bin/bash
-sed -i 's/^ENV=.*$/ENV=PRO/' /home/ubuntu/env
-EOF
-`
+sed -i 's/^ENV=.*$/ENV=${ENV_NAME}/' /home/ubuntu/comfy/env
+EOF`
 
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \
@@ -50,9 +50,9 @@ TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_
 # 创建Auto Scaling Group
 aws autoscaling create-auto-scaling-group \
     --auto-scaling-group-name "${ENV_NAME}-asg" \
-    --launch-template "LaunchTemplateName="${ENV_NAME}",Version=$TEMPLATE_VERSION" \
+    --launch-template "LaunchTemplateName=${ENV_NAME},Version=$TEMPLATE_VERSION" \
     --min-size 0 \
-    --max-size 5 \
+    --max-size 20 \
     --desired-capacity 0 \
     --vpc-zone-identifier "${SUBNET_ID}" \
     --default-cooldown 60
