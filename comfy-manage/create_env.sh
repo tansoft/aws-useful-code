@@ -54,7 +54,7 @@ echo "INSTANCE_PROFILE_NAME: ${INSTANCE_PROFILE_NAME}"
 # 镜像启动时切换到环境
 USER_DATA=`cat << EOF | base64 --wrap 0
 #!/bin/bash
-sed -i 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env
+sed -i 's/^export ENV=.*$/export ENV=${ENV}/' /home/ubuntu/comfy/env
 systemctl restart comfyui.service
 EOF`
 

@@ -177,7 +177,7 @@ wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/mai
 
 ```bash
 # 如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
-# 包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2
+# 包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2 IAMFullAccess(用于创建模版时passrole)
 ./create_env.sh pro
 # 如果是在本地运行，增加机器的instance_id，注意profile指定的region
 ./create_env.sh pro i-06fxxxxx
