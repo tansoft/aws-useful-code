@@ -16,17 +16,6 @@ def get_queue_url(sqs_client, queue_name):
         print(f"Error getting queue URL: {e}")
         return None
 
-def process_message(message_body):
-    """处理消息内容，发送HTTP POST请求"""
-    global workflow
-    try:
-        prompt_data = json.loads(message_body)
-        workflow.generate_clip(prompt_data)
-        return True
-    except (json.JSONDecodeError, requests.RequestException, ValueError) as e:
-        print(f"Error processing message: {e}")
-        return False
-
 def main():
     # 获取环境变量
     env = os.getenv('ENV', 'base')
@@ -63,15 +52,17 @@ def main():
                 
                 print(f"Processing message: {message_body}")
                 
-                if process_message(message_body):
+                try:
+                    prompt_data = json.loads(message_body)
+                    workflow.generate_clip(prompt_data)
                     # 处理成功，删除消息
                     sqs.delete_message(
                         QueueUrl=queue_url,
                         ReceiptHandle=receipt_handle
                     )
                     print("Message processed and deleted successfully")
-                else:
-                    print("Failed to process message, will retry later")
+                except (json.JSONDecodeError, requests.RequestException, ValueError) as e:
+                    print(f"Failed to process message, will retry later: {e}")
                     
         except ClientError as e:
             print(f"AWS Error: {e}")
