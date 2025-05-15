@@ -109,8 +109,8 @@ class AutoScalingManager:
 def call_comfyui(prompt_data):
     workflow.generate_clip(prompt_data)
 
-def call_sqs(prompt_data):
-    manager = AutoScalingManager()
+def call_sqs(prompt_data, env='base'):
+    manager = AutoScalingManager(env=env)
     if manager.send_message(prompt_data):
         print("Job submitted successfully")
     else:
@@ -119,11 +119,14 @@ def call_sqs(prompt_data):
     manager.manage_scaling()
 
 if __name__ == "__main__":
-    workflow = ComfyWorkflow(server_address="1.2.3.4:8080")
-    workflowfile = 'simple_workflow.json'
-    prompt_data = json.load(workflowfile)
-    # 设置文本提示
-    prompt_data["6"]["inputs"]["text"] = "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,"
-
-    # call_comfyui(prompt_data)
-    call_sqs(prompt_data)
+    with open('simple_workflow.json', 'r', encoding="utf-8") as f:
+        prompt_data = json.load(f)
+        # 设置输入参数等
+        prompt_data["6"]["inputs"]["text"] = "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,"
+        if True:
+            # 发送 sqs 方式
+            call_sqs(prompt_data, env='pro')
+        else:
+            # 直接请求 ComfyUI 方式
+            workflow = ComfyWorkflow(server_address='1.2.3.4:8080')
+            call_comfyui(prompt_data)

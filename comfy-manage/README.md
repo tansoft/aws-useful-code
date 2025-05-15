@@ -153,7 +153,7 @@ journalctl -f -u comfyui
 
 ```
 
-## 测试工作流
+## 测试Comfy工作流
 
 下载模型可以看到直接保存models目录后，文件就保存在s3上了
 
@@ -165,19 +165,44 @@ wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11
 wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
 ```
 
-可以通过配置 input 和 output 目录的事件触发，来定制自己的工作流
+* 测试工作流通过后，可以下载工作流API json，后面测试使用。
+* （可选）可以通过配置 input 和 output 目录的事件触发，来定制自己的工作流。
 
 ## 上线部署
 
-从现在的ec2，创建对应线上环境：
+从现在的ec2，创建对应线上环境，注意环境名只能使用小写：
 
 ```bash
 # 如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
 # 包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2
-./create_env.sh PRO
+./create_env.sh pro
 # 如果是在本地运行，增加机器的instance_id，注意profile指定的region
-./create_env.sh PRO i-06fxxxxx
+./create_env.sh pro i-06fxxxxx
 ```
+
+## 测试提交任务
+
+* 发送任务环境依赖 comfy_utils.py 和 send_job.py，修改 send_job.py 中的变量，进行测试。
+
+```bash
+python send_job.py
+
+Message sent successfully: c29f8168-8e7e-428a-a936-f76a6d287567
+Job submitted successfully
+Current queue size: 1
+Current instance count: 0
+Starting first instance...
+Adjusted ASG capacity to 1
+
+# 可以看到机器已经启动
+```
+
+观察机器启动后的处理日志：
+
+```bash
+```
+
+（可选）可以在parse_job中增加处理完成的通知代码
 
 ## 参考链接：
 

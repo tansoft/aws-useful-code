@@ -1,7 +1,7 @@
 #!/bin/bash
 # run in ubuntu, need: jq base64
 # ./delete_env.sh PRO
-set -e
+#set -e
 
 if [ -z "$1" ]; then
     echo "Please specify an environment name. usage: ./delete_env.sh PRO"
@@ -18,10 +18,14 @@ S3_BUCKET=${PREFIX}-${ACCOUNT_ID}-${ENV}
 
 echo "Deleting AWS resources for environment $ENV ..."
 
-aws sqs delete-queue --queue-name "${ENV_NAME}-queue"
+# 删除指定名字的sqs
+QUEUE_URL=$(aws sqs get-queue-url --queue-name "${ENV_NAME}-queue" --query 'QueueUrl' --output text)
+if [ -n "$QUEUE_URL" ]; then
+    echo "Deleting queue $QUEUE_URL ..."
+    aws sqs delete-queue --queue-url $QUEUE_URL
+fi
 
-aws autoscaling delete-auto-scaling-group \
-    --auto-scaling-group-name "${ENV_NAME}-asg"
+aws autoscaling delete-auto-scaling-group --auto-scaling-group-name "${ENV_NAME}-asg" --force-delete
 
 aws ec2 delete-launch-template --launch-template-name "${ENV_NAME}"
 

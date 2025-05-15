@@ -1,6 +1,7 @@
 #!/bin/bash
 # run in ubuntu, need: jq base64
-# ./create_env.sh PRO <i-06fxxxxx>
+# ./create_env.sh pro <i-06fxxxxx>
+# 注意环境名只能小写
 set -e
 
 if [ -z "$1" ]; then
@@ -46,9 +47,9 @@ SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Rese
 echo "SUBNET_ID: ${AMI_ID}"
 
 # 镜像启动时切换到环境
-USER_DATA=`cat | base64 --wrap 0 <<EOF
+USER_DATA=`cat << EOF | base64 --wrap 0
 #!/bin/bash
-sed -i 's/^ENV=.*$/ENV=${ENV_NAME}/' /home/ubuntu/comfy/env
+sed -i 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env
 EOF`
 
 # 创建启动模板
