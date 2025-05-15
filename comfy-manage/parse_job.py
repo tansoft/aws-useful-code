@@ -28,18 +28,18 @@ def process_message(message_body):
         return False
 
 def main():
-    # 初始化AWS客户端
-    sqs = boto3.client('sqs', region_name='ap-northeast-1')
-    
     # 获取环境变量
     env = os.getenv('ENV', 'base')
     prefix = os.getenv('PREFIX', 'simple-comfy')
     queue_name = f"{prefix}-{env}-queue"
+    region = os.getenv('AWS_REGION', 'us-east-1')
+    # 初始化AWS客户端
+    sqs = boto3.client('sqs', region_name=region)
     
     # 获取队列URL
     queue_url = get_queue_url(sqs, queue_name)
     if not queue_url:
-        print("Failed to get queue URL")
+        print(f"Failed to get queue URL {queue_name}")
         return
     
     print(f"Starting to process messages from queue: {queue_name}")

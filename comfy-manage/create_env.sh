@@ -45,6 +45,9 @@ echo "SECURITY_GROUP_IDS: ${AMI_ID}"
 # 获取当前subnet，这里最好是多个需要的subnet进行代入，如：SUBNET_ID="subnet-5ea0c127,subnet-6194ea3b,subnet-c934b782"
 SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text)
 echo "SUBNET_ID: ${AMI_ID}"
+# 获取当前role
+INSTANCE_PROFILE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile" --output text)
+echo "INSTANCE_PROFILE: ${INSTANCE_PROFILE}"
 
 # 镜像启动时切换到环境
 USER_DATA=`cat << EOF | base64 --wrap 0
@@ -56,7 +59,7 @@ EOF`
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \
     --version-description "Initial version" \
-    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\"}" \
+    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": \"${INSTANCE_PROFILE}\"}" \
     --query "LaunchTemplate.LatestVersionNumber" --output text)
 echo "TEMPLATE_VERSION: ${TEMPLATE_VERSION}"
 
