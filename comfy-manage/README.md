@@ -101,16 +101,16 @@ comfy install
 wget https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
 sudo apt-get install ./mount-s3.deb -y
 
-# 指定用于存放模型的s3桶名称，可以根据需要调整名字前缀
-ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
-S3_DATA_NAME="comfy-data-${ACCOUNT_ID}"
+# 下载相关程序文件，注意env里的变量有多个地方使用了，如果修改需要全部替换一下
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/env -O /home/ubuntu/comfy/env
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_start.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/comfy_utils.py -O /home/ubuntu/comfy/comfy_utils.py
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/parse_job.py -O /home/ubuntu/comfy/parse_job.py
+chmod +x /home/ubuntu/comfy/start_start.sh
+chmoe +x /home/ubuntu/comfy/create_env.sh
 
-cat << EOF > /home/ubuntu/env
-ENV=base
-S3_BUCKET=${S3_DATA_NAME}-\${ENV}
-EOF
-
-# 使用默认的model数据创建s3
+# 使用默认的model数据创建 s3 基础环境 base
 source /home/ubuntu/env
 aws s3api create-bucket --bucket ${S3_BUCKET}
 mkdir /home/ubuntu/comfy/s3
@@ -124,9 +124,6 @@ rm -rf /home/ubuntu/comfy/ComfyUI/models /home/ubuntu/comfy/ComfyUI/input /home/
 ln -s /home/ubuntu/comfy/s3/input /home/ubuntu/comfy/ComfyUI/
 ln -s /home/ubuntu/comfy/s3/output /home/ubuntu/comfy/ComfyUI/
 ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
-
-# 相关程序文件
-
 
 # 启动服务
  cat << EOF | sudo tee /etc/systemd/system/comfyui.service
@@ -148,7 +145,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable comfyui.service
 sudo systemctl start comfyui.service
 
-
 # 查看服务状态和日志
 systemctl status comfyui
 journalctl -f -u comfyui
@@ -157,6 +153,7 @@ journalctl -f -u comfyui
 
 ## 测试工作流
 
+下载模型可以看到直接保存models目录后，文件就保存在s3上了
 
 ``` bash
 wget "https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors
@@ -166,6 +163,18 @@ wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11
 wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
 ```
 
+可以通过配置 input 和 output 目录的事件触发，来定制自己的工作流
+
+## 上线部署
+
+从现在的ec2，创建对应线上环境：
+
+```bash
+# 如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
+./create_env.sh PRO
+# 如果是在本地运行，增加机器的instance_id，注意profile指定的region
+./create_env.sh PRO i-06fxxxxx
+```
 
 ## 参考链接：
 

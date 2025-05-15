@@ -1,6 +1,6 @@
 #!/bin/bash
 # run in ubuntu, need: jq base64
-# ./create_env.sh i-06fxxxxx PRO
+# ./create_env.sh PRO <i-06fxxxxx>
 set -e
 
 if [ $# -ne 2 ]; then
@@ -8,8 +8,18 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-INSTANCE_ID=$1
-ENV=$2
+INSTANCE_ID=${1:-}
+ENV=${2:base}
+
+if [ -z "$INSTANCE_ID" ]; then
+    TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+    INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+    if [ -z "$INSTANCE_ID" ]; then
+    echo instance_id not found
+    exit 1
+fi
+
+# 因为 ENV 是单独指定的，所以其他对应的值不使用env文件取
 PREFIX=simple-comfy
 ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
 S3_BUCKET=${PREFIX}-${ACCOUNT_ID}-${ENV}
@@ -24,8 +34,12 @@ SECURITY_GROUP_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --que
 # 获取当前subnet，这里最好是多个需要的subnet进行代入，如：SUBNET_ID="subnet-5ea0c127,subnet-6194ea3b,subnet-c934b782"
 SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text)
 
-# 获取 user-data.txt 文件，并把内容进行base64
-USER_DATA=$(base64 user-data.txt)
+# 镜像启动时切换到环境
+USER_DATA=`cat | base64 --wrap 0 <<EOF
+#!/bin/bash
+sed -i 's/^ENV=.*$/ENV=PRO/' /home/ubuntu/env
+EOF
+`
 
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \

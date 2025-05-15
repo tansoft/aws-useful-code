@@ -20,7 +20,6 @@ def process_message(message_body):
     """处理消息内容，发送HTTP POST请求"""
     global workflow
     try:
-        # 假设消息体是JSON格式，包含url和data字段
         prompt_data = json.loads(message_body)
         workflow.generate_clip(prompt_data)
         return True

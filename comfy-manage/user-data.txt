@@ -1,3 +1,0 @@
-#!/bin/bash
-
-sed -i 's/^ENV=.*$/ENV=PRO/' /home/ubuntu/env
