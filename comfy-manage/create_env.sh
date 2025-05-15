@@ -23,17 +23,27 @@ fi
 # 因为 ENV 是单独指定的，所以其他对应的值不使用env文件取
 PREFIX=simple-comfy
 ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
+ENV_NAME=${PREFIX}-${ENV}
 S3_BUCKET=${PREFIX}-${ACCOUNT_ID}-${ENV}
 
-echo "Creating AWS resources for environment: $ENV with instance: $INSTANCE_ID"
+echo "Creating AWS resources for environment $ENV with instance $INSTANCE_ID ..."
 
 # 使用aws 命令行，给instance 创建AMI
-AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "${ENV_NAME}-ami" --no-reboot --description "AMI for ${ENV}" --query ImageId --output text)
+AMI_ID=$(aws ec2 describe-images --filters "Name=name,Values=${ENV_NAME}-ami" --query 'Images[*].ImageId' --output text)
+if [ -n "$AMI_ID" ]; then
+    echo "AMD_ID: $AMI_ID , AMI already exist."
+    # aws ec2 deregister-image --image-id $IMAGE_ID
+else
+    AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "${ENV_NAME}-ami" --no-reboot --description "AMI for ${ENV}" --query ImageId --output text)
+    echo "AMD_ID: ${AMI_ID}"
+fi
 
 # 获取当前的安全组
-SECURITY_GROUP_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --output json | jq -c .)
+SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --output json | jq -c .)
+echo "SECURITY_GROUP_IDS: ${AMI_ID}"
 # 获取当前subnet，这里最好是多个需要的subnet进行代入，如：SUBNET_ID="subnet-5ea0c127,subnet-6194ea3b,subnet-c934b782"
 SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text)
+echo "SUBNET_ID: ${AMI_ID}"
 
 # 镜像启动时切换到环境
 USER_DATA=`cat | base64 --wrap 0 <<EOF
@@ -44,8 +54,9 @@ EOF`
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \
     --version-description "Initial version" \
-    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":[\"${SECURITY_GROUP_ID}\"],\"UserData\": \"${USER_DATA}\"}" \
+    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\"}" \
     --query "LaunchTemplate.LatestVersionNumber" --output text)
+echo "TEMPLATE_VERSION: ${TEMPLATE_VERSION}"
 
 # 创建Auto Scaling Group
 aws autoscaling create-auto-scaling-group \

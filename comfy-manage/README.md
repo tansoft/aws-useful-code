@@ -105,10 +105,12 @@ sudo apt-get install ./mount-s3.deb -y
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/env -O /home/ubuntu/comfy/env
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_service.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/delete_env.sh -O /home/ubuntu/comfy/delete_env.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/comfy_utils.py -O /home/ubuntu/comfy/comfy_utils.py
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/parse_job.py -O /home/ubuntu/comfy/parse_job.py
 chmod +x /home/ubuntu/comfy/start_service.sh
 chmod +x /home/ubuntu/comfy/create_env.sh
+chmod +x /home/ubuntu/comfy/delete_env.sh
 
 # 使用默认的model数据创建 s3 基础环境 base
 source /home/ubuntu/env
@@ -171,6 +173,7 @@ wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/mai
 
 ```bash
 # 如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
+# 包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2
 ./create_env.sh PRO
 # 如果是在本地运行，增加机器的instance_id，注意profile指定的region
 ./create_env.sh PRO i-06fxxxxx
