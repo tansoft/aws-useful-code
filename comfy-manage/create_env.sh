@@ -46,8 +46,10 @@ echo "SECURITY_GROUP_IDS: ${AMI_ID}"
 SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text)
 echo "SUBNET_ID: ${AMI_ID}"
 # 获取当前role
-INSTANCE_PROFILE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile" --output text)
-echo "INSTANCE_PROFILE: ${INSTANCE_PROFILE}"
+INSTANCE_PROFILE_ARN=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile.Arn" --output text)
+INSTANCE_PROFILE_NAME=$(echo $INSTANCE_PROFILE_ARN | awk -F/ '{print $NF}')
+echo "INSTANCE_PROFILE_ARN: ${INSTANCE_PROFILE_ARN}"
+echo "INSTANCE_PROFILE_NAME: ${INSTANCE_PROFILE_NAME}"
 
 # 镜像启动时切换到环境
 USER_DATA=`cat << EOF | base64 --wrap 0
@@ -59,7 +61,7 @@ EOF`
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \
     --version-description "Initial version" \
-    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": \"${INSTANCE_PROFILE}\"}" \
+    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": {\"Name\":\"${INSTANCE_PROFILE_NAME}\"}}" \
     --query "LaunchTemplate.LatestVersionNumber" --output text)
 echo "TEMPLATE_VERSION: ${TEMPLATE_VERSION}"
 

@@ -125,7 +125,7 @@ if __name__ == "__main__":
         prompt_data["6"]["inputs"]["text"] = "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,"
         if True:
             # 发送 sqs 方式
-            call_sqs(prompt_data, env='pro1')
+            call_sqs(prompt_data, env='pro')
         else:
             # 直接请求 ComfyUI 方式
             workflow = ComfyWorkflow(server_address='1.2.3.4:8080')

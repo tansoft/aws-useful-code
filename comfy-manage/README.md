@@ -183,6 +183,9 @@ wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/mai
 ./create_env.sh pro i-06fxxxxx
 ```
 
+注意，由于创建镜像时，没有强制重启机器，建议检查文件是否都已经生效。
+创建环境后，镜像制作需要一段时间，虽然这个时候已经可以测试，但是弹性伸缩组还是会等到镜像制作完成才开始启动机器。
+
 ## 测试提交任务
 
 * 发送任务环境依赖 comfy_utils.py 和 send_job.py，修改 send_job.py 中的变量，进行测试。
