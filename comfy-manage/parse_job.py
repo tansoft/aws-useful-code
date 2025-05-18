@@ -157,7 +157,9 @@ def main():
             if manager.is_self_terminated():
                 # 这里可以添加自定义善后工作逻辑，例如复制日志到 output 目录上
                 instance_id = manager.get_metadata("instance-id")
-                os.system(f"cp /home/ubuntu/comfy/ComfyUI/user/comfyui_8188.log /home/ubuntu/comfy/ComfyUI/output/{instance_id}.log")
+                log_dir = f"/home/ubuntu/comfy/ComfyUI/output/{instance_id}/"
+                os.makedirs(log_dir, exist_ok=True)
+                os.system("cp /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log /home/ubuntu/comfy/logs/* " + log_dir)
 
                 # 通知 auto scaling 可以结束实例
                 manager.complete_lifecycle_action()
