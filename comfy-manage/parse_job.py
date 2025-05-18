@@ -147,13 +147,7 @@ def main():
 
     while True:
         try:
-            # 接收消息
-            response = sqs.receive_message(
-                QueueUrl=queue_url,
-                MaxNumberOfMessages=1,
-                WaitTimeSeconds=20  # 启用长轮询
-            )
-            
+            # 先进行弹性检查，避免后面接收消息把Queue取光了
             if last_check < time.time():
                 last_check = time.time() + scale_cooldown
                 manager.manage_scaling_policy_tracking_backlog()
@@ -167,10 +161,17 @@ def main():
                 os.system("cp /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log /home/ubuntu/comfy/logs/* " + log_dir)
 
                 # 通知 auto scaling 可以结束实例
-                manager.complete_lifecycle_action()
+                manager.complete_lifecycle_action(instance_id)
                 # 不退出避免程序又被拉起
                 time.sleep(3600)
                 break
+
+            # 接收消息
+            response = sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=1,
+                WaitTimeSeconds=20  # 启用长轮询
+            )
 
             messages = response.get('Messages', [])
             
@@ -196,7 +197,7 @@ def main():
                     print("Message processed and deleted successfully")
                 except (json.JSONDecodeError, requests.RequestException, ValueError) as e:
                     print(f"Failed to process message, will retry later: {e}")
-                    
+
         except ClientError as e:
             print(f"AWS Error: {e}")
             time.sleep(5)

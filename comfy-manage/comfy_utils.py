@@ -204,9 +204,8 @@ class AutoScalingManager:
         except Exception as e:
             return None
 
-    def complete_lifecycle_action(self):
+    def complete_lifecycle_action(self, instance_id):
         try:
-            instance_id = self.get_metadata("instance-id")
             response = self.asg.complete_lifecycle_action(
                 LifecycleHookName = self.asg_name,
                 AutoScalingGroupName = self.asg_name,
