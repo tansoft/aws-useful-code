@@ -33,7 +33,8 @@
   * 操作系统：Ubuntu 24.04
   * 建议在私网中部署，通过 会话管理器 登录实例，由于 ComfyUI 界面没有权限管理，建议在公有子网中配置跳板机，利用ssh隧道进行机器访问
   * 默认方案无需开启任何安全组规则，如果需要直接访问 ComfyUI 的 Web 服务，注意配置相应安全组规则
-  * 磁盘EBS：gp3, 200G
+  * 磁盘EBS：gp3, 50G
+  * 注意：VPC 中应配置 S3 的 Gateway endpoint 以避免访问S3产生额外的 NAT Gateway 流量费。
 
 ### 授予权限
 
@@ -306,6 +307,10 @@ wget "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/vae/kl-f8
 wget "https://huggingface.co/ac-pill/upscale_models/resolve/main/RealESRGAN_x4plus_anime_6B.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/upscale_models/RealESRGAN_x4plus_anime_6B.pth
 wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11f1e_sd15_tile.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/controlnet/control_v11f1e_sd15_tile.pth
 wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
+# 重启 ComfyUI 以加载模型
+sudo systemctl restart comfyui.service
+# 观察日志
+journalctl -b -f
 ```
 
 * 测试工作流通过后，可以下载工作流API json，后面测试使用。

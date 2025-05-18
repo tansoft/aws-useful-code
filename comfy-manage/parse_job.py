@@ -203,6 +203,8 @@ def main():
         except Exception as e:
             print(f"Unexpected error: {e}")
             time.sleep(5)
+            # 如果异常了，重连本机的 ComfyUI
+            workflow.reset_connection()
 
 if __name__ == "__main__":
     main()

@@ -34,6 +34,11 @@ class ComfyWorkflow:
         with urllib.request.urlopen("http://{}/history/{}".format(self.server_address, prompt_id)) as response:
             return json.loads(response.read())
 
+    def reset_connection(self):
+        self.ws.close()
+        self.ws = websocket.WebSocket()
+        self.ws.connect("ws://{}/ws?clientId={}".format(self.server_address, self.client_id))
+
     # 定义一个函数来获取图片，这涉及到监听WebSocket消息
     def run_workflow(self, prompt):
         prompt_id = self.queue_prompt(prompt)['prompt_id']
