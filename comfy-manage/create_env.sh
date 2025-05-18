@@ -33,9 +33,9 @@ echo "Creating AWS resources for environment $ENV with instance $INSTANCE_ID ...
 
 # 删除系统服务中的所有日志，便于启动时监听日志
 echo "delete logs..."
-sudo rm -rf /var/log/journal/*
-rm -rf /home/ubuntu/comfy/logs/*
-rm /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log
+sudo rm -rf /var/log/journal/* || true
+rm -rf /home/ubuntu/comfy/logs/* || true
+rm /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log || true
 
 # 使用aws 命令行，给instance 创建AMI
 AMI_ID=$(aws ec2 describe-images --filters "Name=name,Values=${ASG_NAME}" --query 'Images[*].ImageId' --output text --region ${REGION})
