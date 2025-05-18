@@ -35,6 +35,23 @@
   * 默认方案无需开启任何安全组规则，如果需要直接访问 ComfyUI 的 Web 服务，注意配置相应安全组规则
   * 磁盘EBS：gp3, 200G
 
+### 授予权限
+
+因为后续脚本都建议在 ec2 上运行，由于弹性伸缩组也需要对应权限，建议使用 ec2 角色进行授权
+
+* 打开 IAM 控制台：https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/roles
+* 点击 创建角色，在服务中选择“EC2”，点击 下一步
+* 搜索并选中以下权限（这里方便演示，权限都比较大，后续可以根据需求缩减）
+  * AmazonEC2FullAccess：用于制作镜像，创建启动模版等
+  * AmazonSQSFullAccess：用于创建SQS，提交和获取任务
+  * AutoScalingFullAccess：用于管理弹性伸缩
+  * CloudWatchFullAccessV2：用于观察指标
+  * IAMFullAccess：用于启动模版的角色传递，主要用到 PassRole
+* 输入角色名字，如：simple-comfy-role，并完成创建。
+* 打开 EC2 控制台：https://console.aws.amazon.com/ec2/home
+* 找到实例并选中，点击右上方的 操作 -> 安全 -> 修改IAM角色
+* 选中刚才创建的角色，点击 更新IAM角色
+
 ### 安装配置 Nvidia 驱动
 
 以下代码进行云上的显卡驱动设置，详情可以参考官方文档：https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/install-nvidia-driver.html#nvidia-gaming-driver
@@ -54,12 +71,14 @@ sudo ./aws/install
 # 安装 nvdia driver
 sudo apt-get install -y gcc make build-essential
 sudo apt-get upgrade -y linux-aws
+# 重启实例以加载最新内核版本
 sudo reboot
+```
 
+``` bash
 # 如果是 ssm 登录，先切换到 ubuntu 账号
 sudo -i -u ubuntu
-
-# 继续安装 nvdia driver
+sudo apt install -y unzip dkms linux-headers-$(uname -r)
 cat << EOF | sudo tee --append /etc/modprobe.d/blacklist.conf
 blacklist vga16fb
 blacklist nouveau
@@ -67,9 +86,7 @@ blacklist rivafb
 blacklist nvidiafb
 blacklist rivatv
 EOF
-sudo vi /etc/default/grub
-# 需要修改这一行：
-# GRUB_CMDLINE_LINUX="rdblacklist=nouveau"
+sudo sed -i 's/^GRUB_CMDLINE_LINUX=".*"$/GRUB_CMDLINE_LINUX="rdblacklist=nouveau"/' /etc/default/grub
 sudo update-grub
 aws s3 cp --recursive s3://nvidia-gaming/linux/latest/ .
 unzip *Gaming-Linux-Guest-Drivers.zip -d nvidia-drivers
@@ -82,16 +99,12 @@ EOF
 sudo curl -o /etc/nvidia/GridSwCert.txt "https://nvidia-gaming.s3.amazonaws.com/GridSwCert-Archive/GridSwCertLinux_2024_02_22.cert"
 sudo touch /etc/modprobe.d/nvidia.conf
 echo "options nvidia NVreg_EnableGpuFirmware=0" | sudo tee --append /etc/modprobe.d/nvidia.conf
-sudo reboot
 
-# 如果是 ssm 登录，先切换到 ubuntu 账号
-sudo -i -u ubuntu
-
+# 一定要安装下面的包，不然会导致 EC2 重启后 GPU Driver 不能 work
 sudo apt-get install -y nvidia-cuda-toolkit
 sudo apt-get install -y ubuntu-drivers-common
 sudo ubuntu-drivers autoinstall
 sudo reboot
-
 ```
 
 ### 安装Comfy
@@ -120,23 +133,6 @@ sudo apt-get install ./mount-s3.deb -y
 ```
 
 ## 部署本程序
-
-建议脚本在 ec2 上运行，由于弹性伸缩组也需要对应权限，建议使用 ec2 角色进行授权
-
-### 授予权限
-
-* 打开 IAM 控制台：https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/roles
-* 点击 创建角色，在服务中选择“EC2”，点击 下一步
-* 搜索并选中以下权限（这里方便演示，权限都比较大，后续可以根据需求缩减）
-  * AmazonEC2FullAccess：用于制作镜像，创建启动模版等
-  * AmazonSQSFullAccess：用于创建SQS，提交和获取任务
-  * AutoScalingFullAccess：用于管理弹性伸缩
-  * CloudWatchFullAccessV2：用于观察指标
-  * IAMFullAccess：用于启动模版的角色传递，主要用到 PassRole
-* 输入角色名字，如：simple-comfy-role，并完成创建。
-* 打开 EC2 控制台：https://console.aws.amazon.com/ec2/home
-* 找到实例并选中，点击右上方的 操作 -> 安全 -> 修改IAM角色
-* 选中刚才创建的角色，点击 更新IAM角色
 
 ### 安装脚本
 
@@ -174,6 +170,7 @@ echo "SCALE_COOLDOWN=180" >> /home/ubuntu/comfy/env
 
 # 如果需要调整变量，在这里修改 env 文件，但建议尽量不做修改
 
+source /home/ubuntu/comfy/env
 # 创建标准环境的queue，这样也便于后续对base环境进行测试
 aws sqs create-queue --queue-name "${SQS_NAME}" --region ${REGION}
 # 注意：标准环境用于测试，不建议创建弹性伸缩组
@@ -285,6 +282,16 @@ journalctl -f -u comfy-manage
 # 查看 parse_job.py 的日志
 tail -F /home/ubuntu/comfy/logs/
 # journalctl -b| grep `ps aux | grep parse_job | grep -v grep | awk '{print $2}'`
+
+# 如果弹性实例已经销毁，可以直接查看s3桶上的日志
+# 设置当前变量指向pro环境
+source <(sed 's/^ENV=.*$/ENV=pro/' /home/ubuntu/comfy/env)
+# 列出所有实例id
+aws s3 ls s3://${S3_BUCKET}/output/ | grep "i-"
+  PRE i-0b0f65228098d31dd/
+  PRE i-0c0927f2c910ee57a/
+# 打印日志
+aws s3 cp s3://${S3_BUCKET}/output/i-0b0f65228098d31dd/parse_job.log -
 ```
 
 ## 测试Comfy工作流

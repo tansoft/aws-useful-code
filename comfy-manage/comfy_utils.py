@@ -208,9 +208,6 @@ class AutoScalingManager:
             )
             print(f"Lifecycle action completed: {instance_id} {response}")
             return response
-        except ImportError:
-            print("boto3 is not installed. Please install it with 'pip install boto3'")
-            return None
         except Exception as e:
             print(f"Error completing lifecycle action: {e}")
             return None
@@ -258,10 +255,10 @@ class AutoScalingManager:
                     self.adjust_capacity(new_count)
             
             elif messages_per_instance < self.backlogsize_per_instance:
-                min = self.min_instances
-                if min == 0 and queue_size > 0:
-                    min = 1
-                new_count = max(instance_count - 1, min)
+                min_count = self.min_instances
+                if min_count == 0 and queue_size > 0:
+                    min_count = 1
+                new_count = max(instance_count - 1, min_count)
                 if new_count < instance_count:
                     print(f"Scaling in to {instance_count} -> {new_count} instances...")
                     self.adjust_capacity(new_count)

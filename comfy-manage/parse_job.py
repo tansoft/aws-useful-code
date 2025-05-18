@@ -166,7 +166,6 @@ def main():
                 os.makedirs(log_dir, exist_ok=True)
                 os.system("cp /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log /home/ubuntu/comfy/logs/* " + log_dir)
 
-                print("Self terminated, exit finish.")
                 # 通知 auto scaling 可以结束实例
                 manager.complete_lifecycle_action()
                 # 不退出避免程序又被拉起

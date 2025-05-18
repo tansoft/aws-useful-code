@@ -25,9 +25,7 @@ if [ -z "$INSTANCE_ID" ]; then
     fi
 fi
 
-sed 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env > /tmp/env-${ENV}
-source /tmp/env-${ENV}
-rm -f /tmp/env-${ENV}
+source <(sed 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env)
 
 echo "Creating AWS resources for environment $ENV with instance $INSTANCE_ID ..."
 
