@@ -4,6 +4,10 @@ import json
 import boto3
 import requests
 import time
+import logging
+import sys
+import builtins
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 from comfy_utils import ComfyWorkflow
@@ -18,9 +22,89 @@ def get_queue_url(sqs_client, queue_name):
         print(f"Error getting queue URL: {e}")
         return None
 
+def setup_logging(log_dir='./logs', app_name='parse_job', 
+                  redirect_print=True, console_output=True, 
+                  print_to_console=False):
+    """
+    设置日志配置，可选择重定向print到日志
+    
+    Args:
+        log_dir: 日志文件目录
+        app_name: 应用名称，用于日志文件名
+        redirect_print: 是否将print输出重定向到日志
+        console_output: 是否通过logger输出到控制台
+        print_to_console: 重定向print后是否仍然输出到控制台（可能导致双重输出）
+    
+    Returns:
+        logger: 配置好的logger对象
+    """
+    # 确保日志目录存在
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # 获取记录器
+    logger = logging.getLogger(app_name)
+    logger.setLevel(logging.DEBUG)
+    
+    # 如果记录器已经有处理器，先清除
+    if logger.handlers:
+        for handler in logger.handlers:
+            logger.removeHandler(handler)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # 创建文件处理器 (每日轮转)
+    file_handler = TimedRotatingFileHandler(
+        os.path.join(log_dir, f'{app_name}.log'),
+        when='midnight',
+        interval=1,
+        backupCount=30
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # 创建错误文件处理器 (大小轮转)
+    error_handler = RotatingFileHandler(
+        os.path.join(log_dir, f'{app_name}_error.log'),
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=10
+    )
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(formatter)
+    logger.addHandler(error_handler)
+    
+    # 添加控制台处理器（可选）
+    if console_output:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    
+    # 重定向print到logger（可选）
+    if redirect_print:
+        original_print = builtins.print
+        
+        def custom_print(*args, sep=' ', end='\n', file=None, flush=False):
+            if file is None or file == sys.stdout:
+                message = sep.join(str(arg) for arg in args)
+                logger.info(message)  # 直接使用INFO级别，不添加"PRINT:"前缀
+                
+                # 只有当明确要求且logger没有配置控制台输出时，才使用原始print
+                if print_to_console and not console_output:
+                    original_print(*args, sep=sep, end=end, flush=flush)
+            else:
+                original_print(*args, sep=sep, end=end, file=file, flush=flush)
+        
+        builtins.print = custom_print
+    
+    return logger
+
+
 def main():
+    setup_logging()
     # 获取环境变量
-    load_dotenv('/home/ubuntu/comfy/env')
+    load_dotenv('./env')
     env = os.getenv('ENV', 'base')
     prefix = os.getenv('PREFIX', 'simple-comfy')
     queue_name =os.getenv('SQS_NAME', f"{prefix}-{env}-queue")
@@ -30,6 +114,8 @@ def main():
     max_instances = int(os.getenv('MAX_INSTANCES', '20'))
     backlogsize_per_instance = int(os.getenv('BACKLOGSIZE_PER_INSTANCE', '3'))
     scale_cooldown = int(os.getenv('SCALE_COOLDOWN', '180'))
+
+    print(f"ENV: {env} start")
 
     # 初始化AWS客户端
     sqs = boto3.client('sqs', region_name=region)

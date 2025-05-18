@@ -188,7 +188,7 @@ source /home/ubuntu/comfy/env
 ([ "$REGION" == "us-east-1" ] && aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" || aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION")
 # 加载s3桶
 mkdir /home/ubuntu/comfy/s3
-mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3
+mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3 --allow-delete --allow-overwrite
 ```
 
 如果已经有做好的s3桶，可以直接通过桶的复制完成
@@ -214,8 +214,9 @@ ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
 
 ### 配置系统服务
 
-配置为开机启动的系统服务，由于一些服务的条件限制，为了先执行完成cloud-init（进行env环境变量替换），并应用上面env中的变量，这里最终选择了启动脚本判断的逻辑。
-这里会创建两个服务 comfyui 是 ComfyUI 本身的服务（依赖于s3mount），comfy-manage 是任务调度的服务。
+配置为开机启动的系统服务，这里会创建两个服务 comfyui 是 ComfyUI 本身的服务（依赖于s3mount），comfy-manage 是任务调度的服务。
+
+由于一些服务的条件限制，为了先执行完成cloud-init（进行env环境变量替换），并应用上面env中的变量，这里最终选择了启动脚本进行判断的逻辑，详见 start_service.sh
 
 ```bash
 # 不能设置 After=cloud-init.target Wants=cloud-init.target Requires=cloud-final.service 会有循环引用
@@ -247,7 +248,7 @@ Requires=network-online.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/comfy/ComfyUI
+WorkingDirectory=/home/ubuntu/comfy
 ExecStart=/home/ubuntu/comfy/start_service.sh comfy-manage
 Restart=always
 
@@ -261,6 +262,8 @@ sudo systemctl start comfyui.service
 sudo systemctl enable comfy-manage.service
 sudo systemctl start comfy-manage.service
 ```
+
+至此，可以查看 ComfyUI 的 Web界面并进行测试。
 
 ### 日志排查
 
@@ -279,13 +282,16 @@ journalctl -f -u comfyui
 
 systemctl status comfy-manage
 journalctl -f -u comfy-manage
+# 查看 parse_job.py 的日志
+tail -F /home/ubuntu/comfy/logs/
+# journalctl -b| grep `ps aux | grep parse_job | grep -v grep | awk '{print $2}'`
 ```
 
 ## 测试Comfy工作流
 
-平时使用，只需要下载模型直接保存models目录，可以看到文件就保存在s3上了。
-也可以下载模型到s3上，机器上也能直接看到模型。
-也可以通过 send_job.py 发送指令到机器上，实现机器上直接下载模型。
+* 平时使用，只需要下载模型直接保存models目录，可以看到文件就保存在s3上了。
+* 也可以下载模型到s3上，机器上也能直接看到模型。
+* 也可以通过 send_job.py 发送指令到机器上，实现机器上直接下载模型。
 
 ``` bash
 wget "https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors
@@ -300,9 +306,9 @@ wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/mai
 
 ## 部署线上弹性环境
 
-线上环境是弹性伸缩组，s3，sqs 三者对应的，这样也避免开发环境有问题直接影响线上环境。
-从标准环境base ec2中，创建对应线上环境，注意环境名只能使用小写。
-默认会找到所有ec2所在VPC的私有子网进行弹性部署，如果vpc中没有私有子网，会选择所有子网。
+* 线上环境是弹性伸缩组，s3，sqs 三者对应的，这样也避免开发环境有问题直接影响线上环境。
+* 从标准环境base ec2中，创建对应线上环境，注意环境名只能使用小写。
+* 默认会找到所有ec2所在VPC的私有子网进行弹性部署，如果vpc中没有私有子网，会选择所有子网。
 
 ```bash
 # 在标准环境base ec2中直接运行
@@ -312,8 +318,8 @@ wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/mai
 ./create_env.sh pro i-06fxxxxx
 ```
 
-注意，由于创建系统镜像时，默认没有强制重启机器，建议检查文件完整性是否都已经生效。
-创建环境后，镜像制作需要一段时间，虽然这个时候已经可以测试，但是弹性伸缩组还是会等到镜像制作完成才开始启动机器。
+* 注意，由于创建系统镜像时，默认没有强制重启机器，建议检查文件完整性是否都已经生效。
+* 创建环境后，镜像制作需要一段时间，虽然这个时候已经可以测试，但是弹性伸缩组还是会等到镜像制作完成才开始启动机器。
 
 ## 测试提交任务
 
