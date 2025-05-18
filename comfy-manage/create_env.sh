@@ -31,6 +31,12 @@ rm -f /tmp/env-${ENV}
 
 echo "Creating AWS resources for environment $ENV with instance $INSTANCE_ID ..."
 
+# 删除系统服务中的所有日志，便于启动时监听日志
+echo "delete logs..."
+sudo rm -rf /var/log/journal/*
+rm -rf /home/ubuntu/comfy/logs/*
+rm /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log
+
 # 使用aws 命令行，给instance 创建AMI
 AMI_ID=$(aws ec2 describe-images --filters "Name=name,Values=${ASG_NAME}" --query 'Images[*].ImageId' --output text --region ${REGION})
 if [ -n "$AMI_ID" ]; then
@@ -81,7 +87,7 @@ EOF`
 # 创建启动模板
 TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ASG_NAME}" \
     --version-description "Initial version" \
-    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"${INSTANCE_TYPE}\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": {\"Name\":\"${INSTANCE_PROFILE_NAME}\"}}" \
+    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"${INSTANCE_TYPE}\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\":\"${USER_DATA}\",\"IamInstanceProfile\":{\"Name\":\"${INSTANCE_PROFILE_NAME}\"},\"TagSpecifications\":[{\"ResourceType\":\"instance\",\"Tags\":[{\"Key\":\"Name\",\"Value\":\"${ASG_NAME}\"}]}]}" \
     --query "LaunchTemplate.LatestVersionNumber" --output text --region ${REGION})
 echo "TEMPLATE_VERSION: ${TEMPLATE_VERSION}"
 
