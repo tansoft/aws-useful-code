@@ -144,6 +144,8 @@ class AutoScalingManager:
                 DesiredCapacity=desired_capacity
             )
             print(f"Adjusted ASG capacity to {desired_capacity}")
+            # need check spot status immediately
+            self.lifecycle_expire = time.time() - 1
         except ClientError as e:
             print(f"Error adjusting capacity: {e}")
 
@@ -256,7 +258,10 @@ class AutoScalingManager:
                     self.adjust_capacity(new_count)
             
             elif messages_per_instance < self.backlogsize_per_instance:
-                new_count = max(instance_count - 1, self.min_instances)
+                min = self.min_instances
+                if min == 0 and queue_size > 0:
+                    min = 1
+                new_count = max(instance_count - 1, min)
                 if new_count < instance_count:
                     print(f"Scaling in to {instance_count} -> {new_count} instances...")
                     self.adjust_capacity(new_count)

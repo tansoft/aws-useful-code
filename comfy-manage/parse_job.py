@@ -154,20 +154,24 @@ def main():
                 WaitTimeSeconds=20  # 启用长轮询
             )
             
+            if last_check < time.time():
+                last_check = time.time() + scale_cooldown
+                manager.manage_scaling_policy_tracking_backlog()
+
             if manager.is_self_terminated():
+                print("Self terminated, exit now")
                 # 这里可以添加自定义善后工作逻辑，例如复制日志到 output 目录上
                 instance_id = manager.get_metadata("instance-id")
                 log_dir = f"/home/ubuntu/comfy/ComfyUI/output/{instance_id}/"
                 os.makedirs(log_dir, exist_ok=True)
                 os.system("cp /home/ubuntu/comfy/ComfyUI/user/comfyui_*.log /home/ubuntu/comfy/logs/* " + log_dir)
 
+                print("Self terminated, exit finish.")
                 # 通知 auto scaling 可以结束实例
                 manager.complete_lifecycle_action()
+                # 不退出避免程序又被拉起
+                time.sleep(3600)
                 break
-
-            if last_check < time.time():
-                last_check = time.time() + scale_cooldown
-                manager.manage_scaling_policy_tracking_backlog()
 
             messages = response.get('Messages', [])
             
