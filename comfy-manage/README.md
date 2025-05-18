@@ -1,8 +1,38 @@
 # ComfyUI 简单管理
 
-这是一个简单的 ComfyUI 任务管理和弹性的Demo
+这是一个简单的 ComfyUI 任务管理和弹性的Demo，也可以稍微改动即可用在其他异步的需要弹性的场景，方案优势：
 
-* 启动ec2实例，并制作comfy环境，这里使用Ubuntu 24.04，EC2 的安全组需要开放 22 以及 8848 端口，EBS 选择 gp3, 200G。
+* 环境配置依赖等，在EC2上完成后，可以一键进行弹性扩展使用
+* 空闲时，弹性组可以缩减到 0 节省费用，可以灵活控制弹性伸缩行为
+* 只依赖一个SQS队列实现异步，提供简单的发送和接收代码，可以轻松扩展
+* 对于经常改动的依赖（例如版本升级，模型下载，输入输出等），挂载s3或efs，避免反复更新AMI镜像和加速启动过程
+
+![架构图](architecture.png)
+
+## 工作流程
+
+* 制作基础环境 Comfy Base
+* 通过 create_env.sh 一键创建环境，delete_env.sh 删除环境
+  * 通过 Comfy Base 制作 AMI 镜像
+  * 配置弹性伸缩环境
+  * 复制S3环境
+  * 配置sqs
+* 业务代码中，修改为调用 send_job.py 进行任务分发
+  * 发送任务到 sqs 上
+  * 判断是否需要初始化实例
+* 弹性环境起来之后，内置的 parse_job.py 将会运行
+  * 实例正常运行后，会到 sqs 上获取任务
+  * 进行任务执行
+  * 完成之后，可对业务逻辑进行回调（虚线部分）
+  * 判断队列深度，控制实例的缩放
+
+## 配置 Comfy 基础环境
+
+* 启动ec2实例，并制作comfy环境，这里使用Ubuntu 24.04，建议在私网中部署，通过 会话管理器 登录实例，EBS 选择 gp3, 200G。
+
+### 安装配置 Nvidia 驱动
+
+以下代码进行云上的显卡设置，详情可以参考官方文档：https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/install-nvidia-driver.html#nvidia-gaming-driver
 
 ``` bash
 # 如果是 ssm 登录，先切换到 ubuntu 账号
@@ -57,10 +87,235 @@ sudo apt-get install -y ubuntu-drivers-common
 sudo ubuntu-drivers autoinstall
 sudo reboot
 
+```
+
+### 安装Comfy
+
+```bash
 # 如果是 ssm 登录，先切换到 ubuntu 账号
 sudo -i -u ubuntu
 
-# 安装 cloudwatch agent，用于弹性指标判断
+# 指定python环境
+sudo apt install -y python3.12-venv
+python3 -m venv venv
+. venv/bin/activate
+pip install comfy-cli
+# 一路y即可
+comfy install
+```
+
+### 安装S3映射
+
+把大文件放到s3上，通过本地文件夹的方式加载到机器中，实现压缩系统镜像，加速开发和升级的目的
+
+```bash
+# 安装 S3 驱动
+wget https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
+sudo apt-get install ./mount-s3.deb -y
+```
+
+### 部署本程序
+
+如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
+包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2 IAMFullAccess(用于创建模版时passrole)
+
+```bash
+# 下载相关程序文件，注意env里的变量有多个地方使用了，建议不要修改，如果修改需要全部替换一下
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_service.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/delete_env.sh -O /home/ubuntu/comfy/delete_env.sh
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/comfy_utils.py -O /home/ubuntu/comfy/comfy_utils.py
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/parse_job.py -O /home/ubuntu/comfy/parse_job.py
+chmod +x /home/ubuntu/comfy/start_service.sh
+chmod +x /home/ubuntu/comfy/create_env.sh
+chmod +x /home/ubuntu/comfy/delete_env.sh
+cd /home/ubuntu/comfy/
+# 注意应该在上面的venv环境中执行
+. /home/ubuntu/venv/bin/activate
+pip install boto3 dotenv
+
+# 程序用到的变量，生成env文件：
+ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+REGION=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].Placement.AvailabilityZone' --output text | sed 's/[a-z]$//')
+echo "ENV=base" > /home/ubuntu/comfy/env
+echo "PREFIX=simple-comfy" >> /home/ubuntu/comfy/env
+echo "ACCOUNT_ID=${ACCOUNT_ID}" >> /home/ubuntu/comfy/env
+echo "REGION=${REGION}" >> /home/ubuntu/comfy/env
+echo "S3_BUCKET=\${PREFIX}-\${ACCOUNT_ID}-\${REGION}-\${ENV}" >> /home/ubuntu/comfy/env
+echo "SQS_NAME=\${PREFIX}-\${ENV}-queue" >> /home/ubuntu/comfy/env
+echo "ASG_NAME=\${PREFIX}-\${ENV}-asg" >> /home/ubuntu/comfy/env
+echo "INSTANCE_TYPE=g5.2xlarge" >> /home/ubuntu/comfy/env
+echo "MIN_INSTANCES=0" >> /home/ubuntu/comfy/env
+echo "MAX_INSTANCES=20" >> /home/ubuntu/comfy/env
+echo "BACKLOGSIZE_PER_INSTANCE=3" >> /home/ubuntu/comfy/env
+echo "SCALE_COOLDOWN=180" >> /home/ubuntu/comfy/env
+
+# 如果需要调整变量，在这里修改好 env 文件，建议不做修改
+
+# 使用默认的model数据创建 s3 基础环境 base
+source /home/ubuntu/comfy/env
+aws s3api create-bucket --bucket ${S3_BUCKET} --region ${REGION} \
+    --create-bucket-configuration LocationConstraint=${REGION}
+mkdir /home/ubuntu/comfy/s3
+mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3
+# 注意这里会高度同步，如果s3本身有数据，会被删除
+aws s3 sync /home/ubuntu/comfy/ComfyUI/models s3://${S3_BUCKET}/models --delete
+aws s3 sync /home/ubuntu/comfy/ComfyUI/input s3://${S3_BUCKET}/input --delete
+aws s3 sync /home/ubuntu/comfy/ComfyUI/output s3://${S3_BUCKET}/output --delete
+# 这里可以把本地目录清空以节省磁盘空间，加快实例启动速度
+rm -rf /home/ubuntu/comfy/ComfyUI/models /home/ubuntu/comfy/ComfyUI/input /home/ubuntu/comfy/ComfyUI/output
+ln -s /home/ubuntu/comfy/s3/input /home/ubuntu/comfy/ComfyUI/
+ln -s /home/ubuntu/comfy/s3/output /home/ubuntu/comfy/ComfyUI/
+ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
+# 创建标准环境的queue
+aws sqs create-queue --queue-name "${SQS_NAME}" --region ${REGION}
+
+# 配置服务
+# 不能设置 After=cloud-init.target Wants=cloud-init.target Requires=cloud-final.service 会有循环引用
+# 不能用 EnvironmentFile 读取变量文件，因为不支持多重变量
+# 不能用 ExecStartPre 等待，有可能造成超时
+# 不能用 ConditionPathExists=/var/lib/cloud/instance/boot-finished 判断 cloud init 完成，因为跳过就不会重试
+cat << EOF | sudo tee /etc/systemd/system/comfyui.service
+[Unit]
+Description=ComfyUI Service
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/comfy/ComfyUI
+ExecStart=/start_service.sh comfyui
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat << EOF | sudo tee /etc/systemd/system/comfy-manage.service
+[Unit]
+[Unit]
+Description=ComfyUI Service
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/comfy/ComfyUI
+ExecStart=/start_service.sh comfy-manage
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable comfyui.service
+sudo systemctl start comfyui.service
+sudo systemctl enable comfy-manage.service
+sudo systemctl start comfy-manage.service
+```
+
+* 如果服务启动失败，可以打印系统的整个启动日志进行分析
+
+```bash
+sudo journalctl -b
+
+# 查看上一次启动的日志
+sudo journalctl -b -1
+
+# 查看具体服务状态和日志
+systemctl status comfyui
+journalctl -f -u comfyui
+
+systemctl status comfy-manage
+journalctl -f -u comfy-manage
+```
+
+## 测试Comfy工作流
+
+下载模型可以看到直接保存models目录后，文件就保存在s3上了
+
+``` bash
+wget "https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors
+wget "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/vae/kl-f8-anime2.ckpt?download=true" -O /home/ubuntu/comfy/ComfyUI/models/vae/kl-f8-anime2.ckpt
+wget "https://huggingface.co/ac-pill/upscale_models/resolve/main/RealESRGAN_x4plus_anime_6B.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/upscale_models/RealESRGAN_x4plus_anime_6B.pth
+wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11f1e_sd15_tile.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/controlnet/control_v11f1e_sd15_tile.pth
+wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
+```
+
+* 测试工作流通过后，可以下载工作流API json，后面测试使用。
+* （可选）可以通过配置 input 和 output 目录的事件触发，来定制自己的工作流。
+
+## 上线部署
+
+从现在的ec2，创建对应线上环境，注意环境名只能使用小写：
+
+```bash
+./create_env.sh pro
+# 如果是在本地运行，增加机器的instance_id，注意profile指定的region
+./create_env.sh pro i-06fxxxxx
+```
+
+注意，由于创建镜像时，没有强制重启机器，建议检查文件是否都已经生效。
+创建环境后，镜像制作需要一段时间，虽然这个时候已经可以测试，但是弹性伸缩组还是会等到镜像制作完成才开始启动机器。
+
+## 测试提交任务
+
+* 发送任务环境依赖 comfy_utils.py 和 send_job.py
+* 配置环境请复制env文件使用，只需要改动里面的 ENV=base 就是对应不同的环境。
+
+```bash
+python send_job.py
+
+Message sent successfully: c29f8168-8e7e-428a-a936-f76a6d287567
+Job submitted successfully
+Current queue size: 1
+Current instance count: 0
+Starting first instance...
+Adjusted ASG capacity to 1
+
+# 可以看到机器已经启动
+```
+
+*（可选）可以在 parse_job.py 中添加业务逻辑通知回调代码
+  * 在任务完成后，进行回调操作：在 parse_job.py 中查找关键字：# 这里可以添加自定义任务的业务回调处理
+  * 在机器要缩容时，进行退出前的善后工作：在 parse_job.py 中查找关键字：# 这里可以添加自定义善后工作逻辑
+
+* 也可以直接调整弹性伸缩组的设置：
+
+```bash
+# 注意如果修改了 min/max size，需要在env文件里做对应修改
+# --min-size 0 --max-size 5 
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name simple-comfy-<ENV> --desired-capacity 1
+```
+
+* 发送任务还可以进行任务的提交，参考 send_obj.py 中的 execute_data 代码，例如可以发送下载模型的任务，让在 base 环境中下载：
+
+```bash
+execute_data = {
+    "exec_cmd": "wget 'https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true' -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors",
+}
+```
+
+## 删除环境
+
+```bash
+# 需要注意弹性伸缩组是异步删除的，如果刚删除完，又马上创建相同的名字的环境，会冲突，需要先等待原来的环境删除完成。
+./delete_env.sh pro
+```
+
+## 参考链接：
+
+* https://aws.amazon.com/cn/blogs/china/using-ec2-to-build-comfyui-and-combine-it-with-krita-practice/
+* https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/mountpoint-installation.html#mountpoint.install.deb
+
+### 安装 cloudwatch agent，用于指标监测
+
+参考：https://docs.aws.amazon.com/zh_cn/AmazonCloudWatch/latest/monitoring/download-cloudwatch-agent-commandline.html
+
+```bash
 wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
 sudo dpkg -i -E amazon-cloudwatch-agent.deb
 TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
@@ -88,148 +343,4 @@ cat > /home/ubuntu/cloudwatch-agent/agent.json <<EOF
 }
 EOF
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch-agent/agent.json -s
-
-# 指定python环境
-sudo apt install -y python3.12-venv
-python3 -m venv venv
-. venv/bin/activate
-pip install comfy-cli
-# 一路y即可
-comfy install
-
-# 安装 S3 驱动
-wget https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
-sudo apt-get install ./mount-s3.deb -y
-
-# 下载相关程序文件，注意env里的变量有多个地方使用了，如果修改需要全部替换一下
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/env -O /home/ubuntu/comfy/env
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_service.sh
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/delete_env.sh -O /home/ubuntu/comfy/delete_env.sh
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/comfy_utils.py -O /home/ubuntu/comfy/comfy_utils.py
-wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/parse_job.py -O /home/ubuntu/comfy/parse_job.py
-chmod +x /home/ubuntu/comfy/start_service.sh
-chmod +x /home/ubuntu/comfy/create_env.sh
-chmod +x /home/ubuntu/comfy/delete_env.sh
-cd /home/ubuntu/comfy/
-# 注意应该在上面的venv环境中执行
-pip install boto3
-
-# 使用默认的model数据创建 s3 基础环境 base
-source /home/ubuntu/env
-aws s3api create-bucket --bucket ${S3_BUCKET}
-mkdir /home/ubuntu/comfy/s3
-mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3
-# 注意这里会高度同步，如果s3本身有数据，会被删除
-aws s3 sync /home/ubuntu/comfy/ComfyUI/models s3://${S3_BUCKET}/models --delete
-aws s3 sync /home/ubuntu/comfy/ComfyUI/input s3://${S3_BUCKET}/input --delete
-aws s3 sync /home/ubuntu/comfy/ComfyUI/output s3://${S3_BUCKET}/output --delete
-# 这里可以把本地目录清空以节省磁盘空间，加快实例启动速度
-rm -rf /home/ubuntu/comfy/ComfyUI/models /home/ubuntu/comfy/ComfyUI/input /home/ubuntu/comfy/ComfyUI/output
-ln -s /home/ubuntu/comfy/s3/input /home/ubuntu/comfy/ComfyUI/
-ln -s /home/ubuntu/comfy/s3/output /home/ubuntu/comfy/ComfyUI/
-ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
-
-# 启动服务
- cat << EOF | sudo tee /etc/systemd/system/comfyui.service
-[Unit]
-Description=ComfyUI Service
-After=network.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/comfy/ComfyUI
-ExecStart=bash /home/ubuntu/comfy/start_service.sh
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable comfyui.service
-sudo systemctl start comfyui.service
-
-# 查看服务状态和日志
-systemctl status comfyui
-journalctl -f -u comfyui
-
 ```
-
-## 测试Comfy工作流
-
-下载模型可以看到直接保存models目录后，文件就保存在s3上了
-
-``` bash
-wget "https://huggingface.co/linsg/AWPainting_v1.5.safetensors/resolve/main/AWPainting_v1.5.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/AWPainting_v1.5.safetensors
-wget "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/vae/kl-f8-anime2.ckpt?download=true" -O /home/ubuntu/comfy/ComfyUI/models/vae/kl-f8-anime2.ckpt
-wget "https://huggingface.co/ac-pill/upscale_models/resolve/main/RealESRGAN_x4plus_anime_6B.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/upscale_models/RealESRGAN_x4plus_anime_6B.pth
-wget "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11f1e_sd15_tile.pth?download=true" -O /home/ubuntu/comfy/ComfyUI/models/controlnet/control_v11f1e_sd15_tile.pth
-wget "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true" -O /home/ubuntu/comfy/ComfyUI/models/checkpoints/v1-5-pruned-emaonly-fp16.safetensors
-```
-
-* 测试工作流通过后，可以下载工作流API json，后面测试使用。
-* （可选）可以通过配置 input 和 output 目录的事件触发，来定制自己的工作流。
-
-## 上线部署
-
-从现在的ec2，创建对应线上环境，注意环境名只能使用小写：
-
-```bash
-# 如果脚本在 ec2 上运行，注意需要给ec2机器创建ami，autoscaling，s3，sqs等权限
-# 包括：AmazonEC2FullAccess AmazonS3FullAccess AmazonSQSFullAccess AutoScalingFullAccess CloudWatchFullAccessV2 IAMFullAccess(用于创建模版时passrole)
-./create_env.sh pro
-# 如果是在本地运行，增加机器的instance_id，注意profile指定的region
-./create_env.sh pro i-06fxxxxx
-```
-
-注意，由于创建镜像时，没有强制重启机器，建议检查文件是否都已经生效。
-创建环境后，镜像制作需要一段时间，虽然这个时候已经可以测试，但是弹性伸缩组还是会等到镜像制作完成才开始启动机器。
-
-## 测试提交任务
-
-* 发送任务环境依赖 comfy_utils.py 和 send_job.py，修改 send_job.py 中的变量，进行测试。
-
-```bash
-python send_job.py
-
-Message sent successfully: c29f8168-8e7e-428a-a936-f76a6d287567
-Job submitted successfully
-Current queue size: 1
-Current instance count: 0
-Starting first instance...
-Adjusted ASG capacity to 1
-
-# 可以看到机器已经启动
-```
-
-* 观察机器启动后的处理日志：
-
-```bash
-```
-
-*（可选）可以在parse_job中增加处理完成的通知代码
-
-* 可以直接调整弹性伸缩组的设置：
-
-```bash
-aws autoscaling update-auto-scaling-group --auto-scaling-group-name simple-comfy-<ENV> --min-size 0 --max-size 5 --desired-capacity 1
-```
-
-## 删除环境
-
-```bash
-# 需要注意弹性伸缩组是异步删除的，如果刚删除完，又马上创建相同的名字的环境，会冲突，需要先等待原来的环境删除完成。
-./delete_env.sh pro
-```
-
-## 参考链接：
-
-* https://aws.amazon.com/cn/blogs/china/using-ec2-to-build-comfyui-and-combine-it-with-krita-practice/
-* https://docs.aws.amazon.com/zh_cn/AmazonCloudWatch/latest/monitoring/download-cloudwatch-agent-commandline.html
-* https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/install-nvidia-driver.html#nvidia-gaming-driver
-* https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/mountpoint-installation.html#mountpoint.install.deb
-
-实现create_env.sh，功能是通过env文件获取参数，指定镜像AMI创建弹性伸缩组、S3、sqs队列
-实现parse_job.py，功能是从sqs中获取任务，并进行http post提交，成功后删除sqs队列。
-实现send_job.py，功能是把json任务往sqs进行提交，并判断sqs中队列数，和ec2的弹性伸缩组当前实例数，如果sqs有队列，实例为0，需要修改实例数为1，另外判断队列中个数/实例数如果大于3，则扩容，小于3则缩容，扩展冷却时间60秒，缩容冷却时间120秒

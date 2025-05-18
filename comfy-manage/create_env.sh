@@ -9,6 +9,10 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# 需要从当前配置读取默认S3_BUCKET
+source /home/ubuntu/comfy/env
+BASE_S3_BUCKET=${S3_BUCKET}
+
 ENV=$1
 INSTANCE_ID=${2:-}
 
@@ -21,32 +25,30 @@ if [ -z "$INSTANCE_ID" ]; then
     fi
 fi
 
-# 因为 ENV 是单独指定的，所以其他对应的值不使用env文件取
-PREFIX=simple-comfy
-ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
-ENV_NAME=${PREFIX}-${ENV}
-S3_BUCKET=${PREFIX}-${ACCOUNT_ID}-${ENV}
+sed 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env > /tmp/env-${ENV}
+source /tmp/env-${ENV}
+rm -f /tmp/env-${ENV}
 
 echo "Creating AWS resources for environment $ENV with instance $INSTANCE_ID ..."
 
 # 使用aws 命令行，给instance 创建AMI
-AMI_ID=$(aws ec2 describe-images --filters "Name=name,Values=${ENV_NAME}-ami" --query 'Images[*].ImageId' --output text)
+AMI_ID=$(aws ec2 describe-images --filters "Name=name,Values=${ASG_NAME}" --query 'Images[*].ImageId' --output text --region ${REGION})
 if [ -n "$AMI_ID" ]; then
     echo "AMD_ID: $AMI_ID , AMI already exist."
     # aws ec2 deregister-image --image-id $IMAGE_ID
 else
-    AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "${ENV_NAME}-ami" --no-reboot --description "AMI for ${ENV}" --query ImageId --output text)
+    AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "${ASG_NAME}" --no-reboot --description "AMI for ${ENV}" --query ImageId --output text --region ${REGION})
     echo "AMD_ID: ${AMI_ID}"
 fi
 
 # 获取当前的安全组
-SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --output json | jq -c .)
+SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --output json --region ${REGION} | jq -c .)
 echo "SECURITY_GROUP_IDS: ${AMI_ID}"
 # 获取当前subnet，这里最好是多个需要的subnet进行代入，如：SUBNET_ID="subnet-5ea0c127,subnet-6194ea3b,subnet-c934b782"
-SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text)
+SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text --region ${REGION})
 echo "SUBNET_ID: ${AMI_ID}"
 # 获取当前role
-INSTANCE_PROFILE_ARN=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile.Arn" --output text)
+INSTANCE_PROFILE_ARN=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile.Arn" --output text --region ${REGION})
 INSTANCE_PROFILE_NAME=$(echo $INSTANCE_PROFILE_ARN | awk -F/ '{print $NF}')
 echo "INSTANCE_PROFILE_ARN: ${INSTANCE_PROFILE_ARN}"
 echo "INSTANCE_PROFILE_NAME: ${INSTANCE_PROFILE_NAME}"
@@ -54,41 +56,51 @@ echo "INSTANCE_PROFILE_NAME: ${INSTANCE_PROFILE_NAME}"
 # 镜像启动时切换到环境
 USER_DATA=`cat << EOF | base64 --wrap 0
 #!/bin/bash
-sed -i 's/^export ENV=.*$/export ENV=${ENV}/' /home/ubuntu/comfy/env
-systemctl restart comfyui.service
+sed -i 's/^ENV=.*$/ENV=${ENV}/' /home/ubuntu/comfy/env
 EOF`
 
 # 创建启动模板
-TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ENV_NAME}" \
+TEMPLATE_VERSION=$(aws ec2 create-launch-template --launch-template-name "${ASG_NAME}" \
     --version-description "Initial version" \
-    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"g5.2xlarge\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": {\"Name\":\"${INSTANCE_PROFILE_NAME}\"}}" \
-    --query "LaunchTemplate.LatestVersionNumber" --output text)
+    --launch-template-data "{\"ImageId\":\"${AMI_ID}\",\"InstanceType\":\"${INSTANCE_TYPE}\",\"SecurityGroupIds\":${SECURITY_GROUP_IDS},\"UserData\": \"${USER_DATA}\",\"IamInstanceProfile\": {\"Name\":\"${INSTANCE_PROFILE_NAME}\"}}" \
+    --query "LaunchTemplate.LatestVersionNumber" --output text --region ${REGION})
 echo "TEMPLATE_VERSION: ${TEMPLATE_VERSION}"
 
 # 创建Auto Scaling Group
 aws autoscaling create-auto-scaling-group \
-    --auto-scaling-group-name "${ENV_NAME}-asg" \
-    --launch-template "LaunchTemplateName=${ENV_NAME},Version=$TEMPLATE_VERSION" \
-    --min-size 0 \
-    --max-size 20 \
-    --desired-capacity 0 \
+    --auto-scaling-group-name "${ASG_NAME}" \
+    --launch-template "LaunchTemplateName=${ASG_NAME},Version=$TEMPLATE_VERSION" \
+    --min-size ${MIN_INSTANCES} \
+    --max-size ${MAX_INSTANCES} \
+    --desired-capacity ${MIN_INSTANCES} \
     --vpc-zone-identifier "${SUBNET_ID}" \
-    --default-cooldown 60
+    --default-cooldown ${SCALE_COOLDOWN} \
+    --region ${REGION}
 
 # 设置扩展策略
-# aws autoscaling put-scaling-policy --auto-scaling-group-name "${ENV_NAME}" --policy-name "ScaleOutPolicy" --scaling-adjustment 1 --adjustment-type "ChangeInCapacity" --cooldown 60
-# aws autoscaling put-scaling-policy --auto-scaling-group-name "${ENV_NAME}" --policy-name "ScaleInPolicy" --scaling-adjustment -1 --adjustment-type "ChangeInCapacity" --cooldown 120
+# aws autoscaling put-scaling-policy --auto-scaling-group-name "${ASG_NAME}" --policy-name "ScaleOutPolicy" --scaling-adjustment 1 --adjustment-type "ChangeInCapacity" --cooldown 60 --region ${REGION}
+# aws autoscaling put-scaling-policy --auto-scaling-group-name "${ASG_NAME}" --policy-name "ScaleInPolicy" --scaling-adjustment -1 --adjustment-type "ChangeInCapacity" --cooldown 120 --region ${REGION}
+
+# 设置生命周期钩子，超时五分钟后释放机器，parse_job.py 会做退出准备工作
+aws autoscaling put-lifecycle-hook \
+  --lifecycle-hook-name "${ASG_NAME}" \
+  --auto-scaling-group-name "${ASG_NAME}" \
+  --lifecycle-transition autoscaling:EC2_INSTANCE_TERMINATING \
+  --default-result CONTINUE \
+  --heartbeat-timeout 300 \
+  --region ${REGION} \
 
 # 创建S3存储桶
-aws s3api create-bucket --bucket $S3_BUCKET
+aws s3api create-bucket --bucket $S3_BUCKET --region ${REGION} \
+    --create-bucket-configuration LocationConstraint=${REGION}
 
 # 使用当前环境进行全量复制
-aws s3 sync s3://${PREFIX}-${ACCOUNT_ID}-base/ s3://${S3_BUCKET}/ --delete
+aws s3 sync s3://${BASE_S3_BUCKET}/ s3://${S3_BUCKET}/ --delete --region ${REGION}
 
 # 创建SQS队列
-aws sqs create-queue --queue-name "${ENV_NAME}-queue"
+aws sqs create-queue --queue-name "${SQS_NAME}" --region ${REGION}
 
 echo "AWS resources creation completed!"
-echo "S3 Bucket: ${ENV_NAME}"
-echo "Auto Scaling Group: ${ENV_NAME}-asg"
-echo "SQS Queue: ${ENV_NAME}-queue"
+echo "S3 Bucket: ${S3_BUCKET}"
+echo "Auto Scaling Group: ${ASG_NAME}"
+echo "SQS Queue: ${SQS_NAME}"
