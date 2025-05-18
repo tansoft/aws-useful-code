@@ -141,7 +141,6 @@ sudo apt-get install ./mount-s3.deb -y
 ### 安装脚本
 
 ```bash
-# 下载相关程序文件，注意env里的变量有多个地方使用了，建议不要修改，如果修改需要全部替换一下
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/start_service.sh -O /home/ubuntu/comfy/start_service.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/create_env.sh -O /home/ubuntu/comfy/create_env.sh
 wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/comfy-manage/delete_env.sh -O /home/ubuntu/comfy/delete_env.sh
@@ -175,26 +174,50 @@ echo "SCALE_COOLDOWN=180" >> /home/ubuntu/comfy/env
 
 # 如果需要调整变量，在这里修改 env 文件，但建议尽量不做修改
 
+# 创建标准环境的queue，这样也便于后续对base环境进行测试
+aws sqs create-queue --queue-name "${SQS_NAME}" --region ${REGION}
+# 注意：标准环境用于测试，不建议创建弹性伸缩组
+```
+
+### 使用ComfyUI的初始目录数据制作标准环境的s3桶
+
+```bash
 # 使用默认的Comfy Model目录内容创建 s3 基础环境 base
 source /home/ubuntu/comfy/env
-aws s3api create-bucket --bucket ${S3_BUCKET} --region ${REGION} \
-    --create-bucket-configuration LocationConstraint=${REGION}
+# 兼容美东一的创建s3桶方法
+([ "$REGION" == "us-east-1" ] && aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" || aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION")
+# 加载s3桶
 mkdir /home/ubuntu/comfy/s3
 mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3
+```
+
+如果已经有做好的s3桶，可以直接通过桶的复制完成
+
+```bash
+aws s3 sync s3://<已经做好的桶>/ s3://${S3_BUCKET}/ --delete --region "$REGION"
+```
+
+全新制作：使用Comfy的初始内容进行创建
+
+```bash
 # 注意这里会高度同步，如果s3本身有数据，会被删除
 aws s3 sync /home/ubuntu/comfy/ComfyUI/models s3://${S3_BUCKET}/models --delete
 aws s3 sync /home/ubuntu/comfy/ComfyUI/input s3://${S3_BUCKET}/input --delete
 aws s3 sync /home/ubuntu/comfy/ComfyUI/output s3://${S3_BUCKET}/output --delete
-# 这里把本地目录清空以节省磁盘空间，加快实例启动速度，注意如果s3 mount异常，目录中就是空的
+# 这里把本地目录清空以节省磁盘空间，加快实例启动速度，注意如果s3 mount异常，目录中就会是空的
 rm -rf /home/ubuntu/comfy/ComfyUI/models /home/ubuntu/comfy/ComfyUI/input /home/ubuntu/comfy/ComfyUI/output
+# 把 model input output 目录使用s3桶数据来代替
 ln -s /home/ubuntu/comfy/s3/input /home/ubuntu/comfy/ComfyUI/
 ln -s /home/ubuntu/comfy/s3/output /home/ubuntu/comfy/ComfyUI/
 ln -s /home/ubuntu/comfy/s3/models /home/ubuntu/comfy/ComfyUI/
-# 创建标准环境的queue，这样也便于后续对base环境进行测试
-aws sqs create-queue --queue-name "${SQS_NAME}" --region ${REGION}
-# 标准环境不会创建弹性伸缩组
+```
 
-# 配置服务，由于一些服务的条件限制，为了先运行完cloud-init，并应用上面env中的变量，这里最终选择了启动脚本判断的逻辑
+### 配置系统服务
+
+配置为开机启动的系统服务，由于一些服务的条件限制，为了先执行完成cloud-init（进行env环境变量替换），并应用上面env中的变量，这里最终选择了启动脚本判断的逻辑。
+这里会创建两个服务 comfyui 是 ComfyUI 本身的服务（依赖于s3mount），comfy-manage 是任务调度的服务。
+
+```bash
 # 不能设置 After=cloud-init.target Wants=cloud-init.target Requires=cloud-final.service 会有循环引用
 # 不能用 EnvironmentFile 读取变量文件，因为不支持多重变量
 # 不能用 ExecStartPre 等待，有可能造成超时

@@ -109,9 +109,8 @@ aws autoscaling put-lifecycle-hook \
   --heartbeat-timeout 300 \
   --region ${REGION} \
 
-# 创建S3存储桶
-aws s3api create-bucket --bucket $S3_BUCKET --region ${REGION} \
-    --create-bucket-configuration LocationConstraint=${REGION}
+# 兼容美东一的创建s3桶方法
+([ "$REGION" == "us-east-1" ] && aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" || aws s3api create-bucket --bucket "$S3_BUCKET" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION")
 
 # 使用当前环境进行全量复制
 aws s3 sync s3://${BASE_S3_BUCKET}/ s3://${S3_BUCKET}/ --delete --region ${REGION}
