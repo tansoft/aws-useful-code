@@ -42,11 +42,30 @@ else
 fi
 
 # 获取当前的安全组
-SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --output json --region ${REGION} | jq -c .)
-echo "SECURITY_GROUP_IDS: ${AMI_ID}"
-# 获取当前subnet，这里最好是多个需要的subnet进行代入，如：SUBNET_ID="subnet-5ea0c127,subnet-6194ea3b,subnet-c934b782"
-SUBNET_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text --region ${REGION})
-echo "SUBNET_ID: ${AMI_ID}"
+SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[].GroupId" --output json --region ${REGION} | jq -c .)
+echo "SECURITY_GROUP_IDS: ${SECURITY_GROUP_IDS}"
+
+# 获取当前实例的subnet，这里只有单个子网
+#SUBNET_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SubnetId" --output text --region ${REGION})
+# 获取当前实例所在VPC的所有私有子网
+VPC_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].VpcId' --output text --region ${REGION})
+# 该命令找出该vpc中所有私有子网
+SUBNET_IDS=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --output json --region ${REGION}| \
+jq -r '[.RouteTables[] | 
+    select((.Routes | map(select(
+        .DestinationCidrBlock=="0.0.0.0/0" and (
+            (has("GatewayId") and (.GatewayId | startswith("igw-")))
+        )
+    )) | length) == 0) |
+    .Associations[] |
+    select(.SubnetId != null) |
+    .SubnetId] | join(",")')
+# 判断如果SUBNET_ID为空，表示该vpc中只有公有子网，这时使用所有子网
+if [ -z "$SUBNET_IDS" ]; then
+    SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[*].SubnetId' --output json --region ${REGION}| jq -r '. | join(",")')
+fi
+echo "SUBNET_IDS: ${SUBNET_IDS}"
+
 # 获取当前role
 INSTANCE_PROFILE_ARN=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].IamInstanceProfile.Arn" --output text --region ${REGION})
 INSTANCE_PROFILE_NAME=$(echo $INSTANCE_PROFILE_ARN | awk -F/ '{print $NF}')
@@ -73,7 +92,7 @@ aws autoscaling create-auto-scaling-group \
     --min-size ${MIN_INSTANCES} \
     --max-size ${MAX_INSTANCES} \
     --desired-capacity ${MIN_INSTANCES} \
-    --vpc-zone-identifier "${SUBNET_ID}" \
+    --vpc-zone-identifier "${SUBNET_IDS}" \
     --default-cooldown ${SCALE_COOLDOWN} \
     --region ${REGION}
 
