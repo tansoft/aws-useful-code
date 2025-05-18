@@ -80,13 +80,15 @@ class ComfyWorkflow:
     # 生成图像并显示
     def generate_clip(self, prompt_data):
         images = self.run_workflow(prompt_data)
+        # 这些是从接口中拿到的图片数据，ComfyUI默认已经有保存的output目录上
         for node_id in images:
             for image_data in images[node_id]:
-                from datetime import datetime
-                output_file = datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
-                with open(output_file, "wb") as binary_file:
-                    binary_file.write(image_data)
-                print("{} DONE!!!".format(output_file))
+                print(f"image job {node_id} finish.")
+                #from datetime import datetime
+                #output_file = datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
+                #with open(output_file, "wb") as binary_file:
+                #    binary_file.write(image_data)
+                #print("{} DONE!!!".format(output_file))
 
 class AutoScalingManager:
     def __init__(self, region, queue_name, asg_name, min_instances=0, max_instances=20, backlogsize_per_instance=3):
