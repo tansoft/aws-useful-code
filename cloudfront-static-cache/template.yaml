@@ -1,0 +1,242 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CloudFront distribution with S3 origin and Lambda@Edge for origin fallback"
+
+Parameters:
+  OriginDomainName:
+    Type: String
+    Description: The domain name of the origin server (e.g., example.com)
+
+  BucketName:
+    Type: String
+    Description: Name for the S3 bucket that will store cached content
+
+Resources:
+  ContentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-OAC
+        Description: Origin Access Control for S3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+        OriginAccessControlOriginType: s3
+
+  ContentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ContentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action:
+              - s3:GetObject
+            Resource: !Sub ${ContentBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
+  OriginRequestFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import base64
+          import urllib.request
+          import urllib.error
+          import mimetypes
+          from botocore.exceptions import ClientError
+
+          def handler(event, context):
+              # Get the response and request from the event
+              response = event['Records'][0]['cf']['response']
+              request = event['Records'][0]['cf']['request']
+              
+              try:
+                  # Only process if S3 returns a 404
+                  if response['status'] != '404':
+                      return response
+                  
+                  # Extract bucket name from the S3 origin domain
+                  bucket_domain = request['origin']['s3']['domainName']
+                  bucket_name = bucket_domain.split('.')[0]
+                  
+                  # Get the path and remove leading slash for S3 key
+                  path = request['uri']
+                  key = path[1:] if path.startswith('/') else path
+                  
+                  # Get the origin domain from request headers
+                  origin_domain = request['origin']['s3']['customHeaders']['x-origin-domain'][0]['value']
+                  
+                  # Fetch content from origin
+                  content = fetch_from_origin(origin_domain, path)
+                  
+                  if content and content['status_code'] == 200:
+                      # Upload to S3
+                      try:
+                          s3 = boto3.client('s3')
+                          s3.put_object(
+                              Bucket=bucket_name,
+                              Key=key,
+                              Body=base64.b64decode(content['body']),
+                              ContentType=content['content_type']
+                          )
+                      except Exception as e:
+                          print(f"Error uploading to S3: {str(e)}")
+                      
+                      # Return the content directly to CloudFront
+                      return {
+                          'status': '200',
+                          'statusDescription': 'OK',
+                          'headers': {
+                              'content-type': [{
+                                  'key': 'Content-Type',
+                                  'value': content['content_type']
+                              }],
+                              'cache-control': [{
+                                  'key': 'Cache-Control',
+                                  'value': 'max-age=86400'
+                              }]
+                          },
+                          'body': content['body'],
+                          'bodyEncoding': 'base64'
+                      }
+                  
+              except Exception as e:
+                  print(f"Error in handler: {str(e)}")
+              
+              # If we couldn't fetch or process the content, return the original 404
+              return response
+
+          def fetch_from_origin(domain, path):
+              """Fetch content from origin server"""
+              try:
+                  url = f'https://{domain}{path}'
+                  headers = {
+                      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+                  }
+                  
+                  req = urllib.request.Request(url, headers=headers)
+                  with urllib.request.urlopen(req) as response:
+                      if response.status == 200:
+                          content = response.read()
+                          content_type = response.getheader('content-type')
+                          if not content_type:
+                              content_type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+                          
+                          return {
+                              'status_code': response.status,
+                              'content_type': content_type,
+                              'body': base64.b64encode(content).decode('utf-8')
+                          }
+                      
+                      print(f"Origin returned status code {response.status}")
+                      return None
+                      
+              except Exception as e:
+                  print(f"Error fetching from origin: {str(e)}")
+                  return None
+      Description: Lambda@Edge function to handle 404s from S3 and fetch from origin
+      Timeout: 5
+      MemorySize: 128
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub ${ContentBucket.Arn}/*
+        - PolicyName: EdgeLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+
+  LambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref OriginRequestFunction
+      Description: Initial version of origin request function
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          LambdaFunctionAssociations:
+            - EventType: origin-response
+              LambdaFunctionARN: !Ref LambdaVersion
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub ${ContentBucket.DomainName}
+            S3OriginConfig: {}
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Domain
+                HeaderValue: !Ref OriginDomainName
+
+Outputs:
+  CloudFrontDomainName:
+    Description: Domain name of the CloudFront distribution
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  S3BucketName:
+    Description: Name of the S3 bucket storing cached content
+    Value: !Ref ContentBucket
