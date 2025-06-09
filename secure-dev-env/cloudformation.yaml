@@ -1,0 +1,299 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  Secure development environment with EC2, Code-Server, CloudFront and Lambda@Edge
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Primary domain name (e.g. dev.example.com)
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 hosted zone ID for the domain, add DNS record (optional)
+    Default: ""
+
+  LambdaEdgeVersionArn:
+    Type: String
+    Description: Lambda@Edge version ARN for viewer request, use for external Auth (optional)
+    Default: ""
+
+  ExistVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select vpc
+
+  ExistSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Select subnet
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t4g.small
+      - t4g.medium
+      - m6i.large
+      - m6i.2xlarge
+      - m6i.4xlarge
+      - m7g.large
+      - m7g.2xlarge
+      - m7g.4xlarge
+    Description: EC2 instance type (t3/t4g for light workloads, m6i/m7g for compute-intensive workloads)
+
+  VolumeSize:
+    Type: Number
+    Default: 50
+    MinValue: 20
+    MaxValue: 100
+    Description: EBS volume size (GB)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Select SSH key pair
+
+  AllowedIp:
+    Type: String
+    Default: 0.0.0.0/32
+    Description: Additional CIDR for direct EC2 SSH access, default is not allowed
+
+  CodeServerPassword:
+    Type: String
+    NoEcho: true
+    Description: VSCode Server login password
+    MinLength: 8
+    MaxLength: 32
+
+Conditions:
+  IsArmInstance: !Or
+    - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "t4g"]
+    - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "m7g"]
+  HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, ""]]
+  HasLambdaEdge: !Not [!Equals [!Ref LambdaEdgeVersionArn, ""]]
+
+Mappings:
+  # aws ec2 describe-managed-prefix-lists  --region <REGION> | jq -r '.PrefixLists[] | select (.PrefixListName == "com.amazonaws.global.cloudfront.origin-facing") | .PrefixListId'
+  AWSRegions2PrefixListID:
+    ap-northeast-1:
+      PrefixList: pl-58a04531
+    ap-northeast-2:
+      PrefixList: pl-22a6434b
+    ap-south-1:
+      PrefixList: pl-9aa247f3
+    ap-southeast-1:
+      PrefixList: pl-31a34658
+    ap-southeast-2:
+      PrefixList: pl-b8a742d1
+    ca-central-1:
+      PrefixList: pl-38a64351
+    eu-central-1:
+      PrefixList: pl-a3a144ca
+    eu-north-1:
+      PrefixList: pl-fab65393
+    eu-west-1:
+      PrefixList: pl-4fa04526
+    eu-west-2:
+      PrefixList: pl-93a247fa
+    eu-west-3:
+      PrefixList: pl-75b1541c
+    sa-east-1:
+      PrefixList: pl-5da64334
+    us-east-1:
+      PrefixList: pl-3b927c52
+    us-east-2:
+      PrefixList: pl-b6a144df
+    us-west-1:
+      PrefixList: pl-4ea04527
+    us-west-2:
+      PrefixList: pl-82a045eb
+
+Resources:
+  DevInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} Security group for development instance"
+      VpcId: !Ref ExistVpcId
+      SecurityGroupIngress:
+        - Description: Allow SSH from allowed IP
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedIp
+        - Description: Allow HTTP from com.amazonaws.global.cloudfront.origin-facing
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId:
+            !FindInMap [AWSRegions2PrefixListID, !Ref "AWS::Region", PrefixList]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-security-group"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+  DevInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref ExistSubnetId
+      ImageId: !If
+        - IsArmInstance
+        - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+        - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref DevInstanceSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cat <<"EOT" | sudo -E -H -u ec2-user bash
+          TEMP_FILE=$(mktemp)
+          trap 'rm -f "$TEMP_FILE"' EXIT
+          curl -fsSL https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/secure-dev-env/code-server-install-amazon2023.sh > "$TEMP_FILE"
+          chmod +x "$TEMP_FILE"
+          while true
+          do
+            bash "$TEMP_FILE" ${DomainName} ${CodeServerPassword} >> /tmp/code-server-install.log 2>&1
+            if [ $? -eq 0 ]; then
+              break
+            fi
+            echo "retry install" >> /tmp/code-server-install.log
+            sleep 5
+          done
+          EOT
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-dev-instance"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Ref DomainName
+        - !Sub "*.${DomainName}"
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-certificate"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+  # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html#vpc-origin-prerequisites
+  # https://repost.aws/questions/QU9RNe5fD_SsK7UIGGG26yOA/origindnserror-from-cloudfront-vpc-origin-when-websocket-is-used
+  #VpcOrigin:
+  #  Type: AWS::CloudFront::VpcOrigin
+  #  Properties:
+  #    VpcOriginEndpointConfig:
+  #      Name: !Sub "${AWS::StackName}-vpc-origin"
+  #      Arn: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${DevInstance}"
+  #      HTTPPort: 80
+  #      OriginProtocolPolicy: http-only
+  #  Tags:
+  #    - Key: Name
+  #      Value: !Sub "${AWS::StackName}-vpc-origin"
+  #    - Key: SecureEnv
+  #      Value: !Ref AWS::StackName
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        Comment: !Sub "${AWS::StackName} Development Environment"
+        Aliases:
+          - !Ref DomainName
+          - !Sub "*.${DomainName}"
+        ViewerCertificate:
+          AcmCertificateArn: !Ref Certificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2019
+        DefaultCacheBehavior:
+          TargetOriginId: DevInstance
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Disable caching
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - POST
+            - PATCH
+            - DELETE
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # AllViewer
+          LambdaFunctionAssociations: !If
+            - HasLambdaEdge
+            - - EventType: viewer-request
+                LambdaFunctionARN: !Ref LambdaEdgeVersionArn
+            - []
+        Origins:
+          - Id: DevInstance
+            DomainName: !GetAtt DevInstance.PublicDnsName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+            #DomainName: !GetAtt DevInstance.PrivateDnsName
+            #VpcOriginConfig:
+            #  VpcOriginId: !GetAtt VpcOrigin.Id
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-cloudfront"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+  DomainRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZoneId
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID
+
+  WildcardDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZoneId
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "*.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID
+
+Outputs:
+  EnvironmentName:
+    Description: Environment name
+    Value: !Ref AWS::StackName
+
+  DomainName:
+    Description: Primary domain name
+    Value: !Ref DomainName
+
+  CloudFrontDomain:
+    Description: CloudFront distribution domain
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  InstancePrivateDNS:
+    Description: EC2 instance private DNS
+    Value: !GetAtt DevInstance.PrivateDnsName
+
+  LambdaFunctionARN:
+    Condition: HasLambdaEdge
+    Description: Lambda@Edge Auth function ARN
+    Value: !Ref LambdaEdgeVersionArn
+
+  SecurityGroupId:
+    Description: Security group ID for development instance
+    Value: !Ref DevInstanceSecurityGroup
