@@ -5,6 +5,7 @@ python3 prewarm.py
 
 import json
 import yaml
+import time
 from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 import urllib.error
@@ -141,6 +142,53 @@ def warm(pop, cf_id, cf_url, file_name, host, encoding, protocol):
         print(f'FAILED: POP:{pop} FILE:{url} IP:{pop_ip if "pop_ip" in locals() else "unknown"} '
               f'ENCODING:{encoding or "(none)"} REASON:{str(e)}')
 
+def parse_invalidation(distribution_id, paths):
+    """
+    Create a CloudFront invalidation for the specified paths
+    Args:
+        distribution_id: The CloudFront distribution ID
+        paths: List of paths to invalidate
+        
+    Returns:
+        invalidation_id: The ID of the created invalidation
+    """
+    import boto3
+    cloudfront = boto3.client('cloudfront')
+    try:
+        response = cloudfront.create_invalidation(
+            DistributionId=distribution_id,
+            InvalidationBatch={
+                'Paths': {
+                    'Quantity': len(paths),
+                    'Items': paths
+                },
+                'CallerReference': str(time.time())
+            }
+        )
+        invalidation_id = response['Invalidation']['Id']
+        print(f"Created invalidation with ID: {invalidation_id}")
+    except Exception as e:
+        print(f"Failed to create invalidation: {e}")
+        return None
+    # wait for invalidation to complete
+    try:
+        print(f"Waiting for invalidation {invalidation_id} to complete...")
+        while True:
+            response = cloudfront.get_invalidation(
+                DistributionId=distribution_id,
+                Id=invalidation_id
+            )
+            status = response['Invalidation']['Status']
+            if status == 'Completed':
+                print(f"Invalidation {invalidation_id} completed successfully")
+                break          
+            print(f"Invalidation status: {status}. Waiting 5 seconds...")
+            time.sleep(5)
+    except Exception as e:
+        print(f"Error checking invalidation status: {e}")
+        return False
+    return True
+
 def main():
     # Load configuration
     config = load_config()
@@ -152,6 +200,7 @@ def main():
     files_raw = config['files']
     pops = config['pops']
     encodings = config['encodings']
+    invalidation_enabled = config.get('invalidation', False)
     
     # Process files list - handle both string and list formats
     if isinstance(files_raw, str):
@@ -163,6 +212,11 @@ def main():
     
     # Get CloudFront ID from URL
     cf_id = cf_url.split('.')[0]
+    
+    # Create invalidation if enabled
+    if invalidation_enabled and files:
+        print("Invalidation is enabled. Creating CloudFront invalidation before prewarming...")
+        parse_invalidation(cf_id, files)
     
     # Create thread pool
     with ThreadPoolExecutor(100) as executor:
