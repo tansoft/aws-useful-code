@@ -23,12 +23,12 @@ host: "myhost.com"
 protocol: "https" # Protocol to use: "http" or "https"
 files: |
   /something.js
-  /something.css
+  /%E7%9B%B8%E5%85%B3%E4%BF%A1%E6%81%AF.zip
   # 多文件预热每个文件一行，以#开头的行会被忽略
   # 脚本同时支持上述格式和传统的YAML列表格式（使用'-'前缀）
 
-# 是否在预热前，先刷新旧缓存（如果替换文件之后）
-# !!! 如果配置为 true，请确认环境中需要配置调用CloudFront API的权限
+# 是否在预热前，先刷新旧缓存（如果需要新内容替换同名文件）
+# !!! 如果使用这个选项，请确认环境中需要配置调用CloudFront Invalidation API的权限 ！！！
 invalidation: false
 
 encodings:
