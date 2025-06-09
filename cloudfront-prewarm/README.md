@@ -10,9 +10,7 @@
 wget https://github.com/tansoft/aws-useful-code/blob/main/cloudfront-prewarm/prewarm.py -O prewarm.py
 ```
 
-* 根据预热需求，在目录中配置 config.yaml 文件
-
-简单配置如下，详情查看 [config.yaml](https://github.com/tansoft/aws-useful-code/blob/main/cloudfront-prewarm/config.yaml)
+* 根据预热需求，在目录中生成 config.yaml 配置文件
 
 ```yaml
 # 你的cloudfront域名
@@ -24,7 +22,7 @@ protocol: "https" # Protocol to use: "http" or "https"
 files: |
   /something.js
   /%E7%9B%B8%E5%85%B3%E4%BF%A1%E6%81%AF.zip
-  # 多文件预热每个文件一行，以#开头的行会被忽略
+  # 多文件预热每个文件一行，以#开头的行会被忽略，中文文件请进行UrlEncode
   # 脚本同时支持上述格式和传统的YAML列表格式（使用'-'前缀）
 
 # 是否在预热前，先刷新旧缓存（如果需要新内容替换同名文件）
