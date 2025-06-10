@@ -40,18 +40,19 @@ encodings:
 # 默认建议以下少数几个即可，对主要的区域性边缘缓存（Regional Edge Cache）做预热：https://aws.amazon.com/cloudfront/features/
 pops:
   - "IAD89-C1" # North America (N.Virginia)
+  - "CMH68-P1" # North America (Ohio)
   - "SFO53-C1" # North America (California)
+  - "HIO50-C1" # North America (Oregon)
   - "GRU1-C2" # South America (São Paulo)
   - "FRA50-C1" # Germany (Frankfurt)
-  - "BOM52-C1" # India (Mumbai)
+  - "DUB56-P1" # Ireland (Dublin)
+  - "LHR61-C2" # UK (London)
+  - "BOM54-P2" # India (Mumbai)
   - "SIN2-P6" # Asia (Singapore)
   - "NRT20-P2" # Japan (Tokyo)
+  - "ICN55-C1" # South Korea (Seoul)
   - "SYD1-C1" # Australia (Sydney)
   - "DXB52-P1" # Middle East (Dubai)
-  # - "CMH68-P1" # North America (Ohio)
-  # - "DUB56-P1" # Ireland (Dublin)
-  # - "LHR61-C2" # UK (London)
-  # - "ICN55-C1" # South Korea (Seoul)
   # - "HKG62-C1" # China/Hong Kong (Hong Kong)
 ```
 
