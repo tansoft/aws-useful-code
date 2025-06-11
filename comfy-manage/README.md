@@ -44,6 +44,8 @@
 * 点击 创建角色，在服务中选择“EC2”，点击 下一步
 * 搜索并选中以下权限（这里方便演示，权限都比较大，后续可以根据需求缩减）
   * AmazonEC2FullAccess：用于制作镜像，创建启动模版等
+  * AmazonS3FullAccess：用于s3访问，加载模型和写入日志等
+  * AmazonEFSCSIDriverPolicy：用于EFS访问，如果没有选择EFS可以不配置
   * AmazonSQSFullAccess：用于创建SQS，提交和获取任务
   * AutoScalingFullAccess：用于管理弹性伸缩
   * CloudWatchFullAccessV2：用于观察指标
@@ -123,14 +125,49 @@ pip install comfy-cli
 comfy install
 ```
 
-### 安装S3映射
+### 配置S3或EFS，实现压缩系统镜像，加速开发和升级的目的
 
-把大文件放到s3上，通过本地文件夹的方式加载到机器中，实现压缩系统镜像，加速开发和升级的目的
+* 把大文件放到S3或者EFS上，通过本地文件夹的方式加载到机器中，实现压缩系统镜像，加速开发和升级的目的。
+* S3 Mount Point在文件顺序读取时，可以用满机器带宽（如 g5.2xlarge 速度可以达到Brust的10Gbps）。
+* 需要考虑有些模型文件可能不是顺序读取的，例如 SafeTensors 格式设计时考虑了内存映射（memory mapping）功能，文件头部包含元数据，描述了各个张量在文件中的位置和大小，这时可能会引起文件的随机读取。
+* S3 由于是通过HTTP的方式获取，在大量随机读取时，性能没有磁盘好，这时可以考虑使用EFS，或先把文件拷贝到 EBS 或 实例存储 上使用。
+
+#### 安装S3映射，用于目录直接挂载S3
 
 ```bash
 # 安装 S3 驱动
 wget https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
 sudo apt-get install ./mount-s3.deb -y
+# 默认aws sdk启用crt特性，提高拷贝性能，用于 aws s3 cp
+aws configure set default.s3.preferred_transfer_client crt
+# （可选）安装 s5cmd 用于s3快速拷贝
+# https://github.com/peak/s5cmd
+wget https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Linux-64bit.tar.gz
+tar xzvf s5cmd_2.3.0_Linux-64bit.tar.gz
+sudo mv s5cmd /usr/local/bin/
+rm -rf s5cmd_2.3.0_Linux-64bit.tar.gz
+```
+
+#### (可选)：安装EFS驱动，用于使用EFS网盘的情况
+
+通过NFS网盘的方式，可以有更高的随机读取性能，减少开始加载模型的等待时间，价格上会比s3贵一些
+
+```bash
+sudo apt-get -y install git binutils rustc cargo pkg-config libssl-dev
+git clone https://github.com/aws/efs-utils
+cd efs-utils
+./build-deb.sh
+sudo apt-get -y install ./build/amazon-efs-utils*deb
+#加载网盘
+mkdir -p /home/ubuntu/comfy/efs
+sudo mount -t efs -o tls fs-xxx:/ /home/ubuntu/comfy/efs
+#开机挂载
+echo "fs-xxx:/ /home/ubuntu/comfy/efs efs defaults,_netdev,tls 0 0" >> /etc/fstab
+
+# 首次挂载需要初始化一下权限
+cd /home/ubuntu/comfy
+sudo chown ubuntu:ubuntu efs
+sudo chmod 755 efs
 ```
 
 ## 部署本程序
@@ -169,7 +206,50 @@ echo "MAX_INSTANCES=20" >> /home/ubuntu/comfy/env
 echo "BACKLOGSIZE_PER_INSTANCE=3" >> /home/ubuntu/comfy/env
 echo "SCALE_COOLDOWN=180" >> /home/ubuntu/comfy/env
 
-# 如果需要调整变量，在这里修改 env 文件，但建议尽量不做修改
+# 如果需要调整其他变量，在这里修改 env 文件，但建议尽量不做修改
+```
+
+#### 考虑生产环境模型的存放方式
+
+##### 使用 S3 Mount Point 直接加载模型（默认方案）
+
+* 优点
+ * 比较灵活，维护简单
+ * 具体使用什么模型就直接从s3自动加载，s3上可以放置很多模型，不需要的模型不会加载
+缺点
+ * 有些模型加载时可能会进行随机读取，这时s3加载可能会性能差一些
+ * 如果生产环境启动需要较长时间，建议把模型复制到本地
+
+##### 初始化时把模型复制到本地
+
+* 优点
+ * 初始化时先顺序+多线程把模型复制到本地磁盘，后续模型在本地加载
+ * 尤其有 实例存储 的机型（例如 g5.2xlarge 有450GB实例存储），使用 实例存储能带来最优的性能和最低成本
+ * 频繁切换模型，不需要从s3重新加载
+ * 对于需要随机读取的模型性能最优
+缺点
+ * 需要复制目录内所有模型，需要精细维护不同工作流使用不同的模型
+ * 模型更新之后，实例中的数据需要重新下载或进行机器替换
+
+！！！请注意！！！如果进行了模型复制，请确保模型更新都以s3上的为准。
+
+```bash
+# 生产环境机器初始化时把模型复制到本地，请选择执行以下命令：
+# 使用 aws cli 进行模型复制
+echo "COPY_MODEL_TO_LOCAL=awscli" >> /home/ubuntu/comfy/env
+# 使用 s5cmd 进行模型复制
+echo "COPY_MODEL_TO_LOCAL=s5cmd" >> /home/ubuntu/comfy/env
+```
+
+##### 使用 EFS 加载模型（请自行调整实现逻辑）
+
+* 优点
+ * 比较灵活，维护简单
+ * EFS适合随机读取场景
+缺点
+ * 有额外费用，顺序读取性能不能把带宽打满
+
+```bash
 
 source /home/ubuntu/comfy/env
 # 创建标准环境的queue，这样也便于后续对base环境进行测试

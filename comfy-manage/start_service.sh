@@ -18,6 +18,40 @@ if [ $mode == "comfyui" ]; then
         /usr/bin/mount-s3 ${S3_BUCKET} /home/ubuntu/comfy/s3 --allow-delete --allow-overwrite
     fi
 
+    # 是否需要进行初始化复制
+    if [ -v COPY_MODEL_TO_LOCAL ]; then
+        # 创建挂载目录
+        MOUNT_POINT="/home/ubuntu/comfy/localcache/models"
+        if [ ! -d "${MOUNT_POINT}" ]; then
+            mkdir -p "${MOUNT_POINT}"
+        fi
+        # 是否存在本地存储
+        DEVICE="/dev/nvme1n1"
+        if [ -b "${DEVICE}" ]; then
+            # 本地存储是否已经挂载
+            if mount | grep -q "${DEVICE}"; then
+                if ! blkid "${DEVICE}" > /dev/null 2>&1; then
+                    echo "格式化设备 ${DEVICE} 为 ext4 文件系统"
+                    mkfs.ext4 -m 0 "${DEVICE}"
+                fi
+                mount "${DEVICE}" "${MOUNT_POINT}"
+                chown -R ubuntu:ubuntu "${MOUNT_POINT}"
+                chmod -R 755 "${MOUNT_POINT}"
+        fi
+        if [ "COPY_MODEL_TO_LOCAL" == "awscli" ]; then
+            aws s3 sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
+        elif [ "COPY_MODEL_TO_LOCAL" == "s5cmd" ]; then
+            s5cmd sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
+        else
+            echo "unknown option COPY_MODEL_TO_LOCAL = ${COPY_MODEL_TO_LOCAL}"
+            exit 1
+        fi
+        rm /home/ubuntu/comfy/ComfyUI/models
+        ln -s ${MOUNT_POINT} /home/ubuntu/comfy/ComfyUI/
+
+        echo "use COPY_MODEL_TO_LOCAL mode, make sure sync models to s3 when modified."
+    fi
+
     /home/ubuntu/venv/bin/python3 main.py --listen 0.0.0.0 --port 8188
 
 elif [ $mode == "comfy-manage" ]; then
