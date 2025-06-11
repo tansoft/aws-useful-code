@@ -50,7 +50,7 @@ if [ $mode == "comfyui" ]; then
         rm /home/ubuntu/comfy/ComfyUI/models
         ln -s ${MOUNT_POINT} /home/ubuntu/comfy/ComfyUI/
 
-        echo "use COPY_MODEL_TO_LOCAL mode, make sure sync models to s3 when modified."
+        echo "use COPY_MODEL_TO_LOCAL mode, make sure sync models to s3 when modified. aws s3 sync ${MOUNT_POINT} s3://${S3_BUCKET}/models"
     fi
 
     /home/ubuntu/venv/bin/python3 main.py --listen 0.0.0.0 --port 8188
