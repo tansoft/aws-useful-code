@@ -37,6 +37,7 @@ if [ $mode == "comfyui" ]; then
                 mount "${DEVICE}" "${MOUNT_POINT}"
                 chown -R ubuntu:ubuntu "${MOUNT_POINT}"
                 chmod -R 755 "${MOUNT_POINT}"
+            fi
         fi
         if [ "COPY_MODEL_TO_LOCAL" == "awscli" ]; then
             aws s3 sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
