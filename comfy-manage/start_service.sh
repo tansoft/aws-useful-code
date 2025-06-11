@@ -39,9 +39,9 @@ if [ $mode == "comfyui" ]; then
                 chmod -R 755 "${MOUNT_POINT}"
             fi
         fi
-        if [ "COPY_MODEL_TO_LOCAL" == "awscli" ]; then
+        if [ "${COPY_MODEL_TO_LOCAL}" == "awscli" ]; then
             aws s3 sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
-        elif [ "COPY_MODEL_TO_LOCAL" == "s5cmd" ]; then
+        elif [ "${COPY_MODEL_TO_LOCAL}" == "s5cmd" ]; then
             s5cmd sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
         else
             echo "unknown option COPY_MODEL_TO_LOCAL = ${COPY_MODEL_TO_LOCAL}"
