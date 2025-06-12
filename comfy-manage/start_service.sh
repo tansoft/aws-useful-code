@@ -26,19 +26,25 @@ if [ $mode == "comfyui" ]; then
             mkdir -p "${MOUNT_POINT}"
         fi
         # 是否存在本地存储
-        DEVICE="/dev/nvme1n1"
-        if [ -b "${DEVICE}" ]; then
-            # 本地存储是否已经挂载
-            if mount | grep -q "${DEVICE}"; then
-                if ! blkid "${DEVICE}" > /dev/null 2>&1; then
-                    echo "格式化设备 ${DEVICE} 为 ext4 文件系统"
-                    mkfs.ext4 -m 0 "${DEVICE}"
+        INSTANCE_STORE_DEVICES=("/dev/nvme0n1" "/dev/nvme1n1" "/dev/nvme2n1")
+        for DEVICE in "${INSTANCE_STORE_DEVICES[@]}"; do
+            # 判断设备存在
+            echo "check if it is a instance stroage: ${DEVICE} ..."
+            if [ -b "${DEVICE}" ]; then
+                # 如果设备还没有挂载，判断为实例存储
+                if mount | grep -q "${DEVICE}"; then
+                    echo "${DEVICE} is not mount, try to mount and use it ..."
+                    if ! blkid "${DEVICE}" > /dev/null 2>&1; then
+                        echo "format ${DEVICE} to ext4 file system ..."
+                        mkfs.ext4 -m 0 "${DEVICE}"
+                    fi
+                    mount "${DEVICE}" "${MOUNT_POINT}"
+                    chown -R ubuntu:ubuntu "${MOUNT_POINT}"
+                    chmod -R 755 "${MOUNT_POINT}"
+                    break
                 fi
-                mount "${DEVICE}" "${MOUNT_POINT}"
-                chown -R ubuntu:ubuntu "${MOUNT_POINT}"
-                chmod -R 755 "${MOUNT_POINT}"
             fi
-        fi
+        done
         if [ "${COPY_MODEL_TO_LOCAL}" == "awscli" ]; then
             aws s3 sync s3://${S3_BUCKET}/models ${MOUNT_POINT}
         elif [ "${COPY_MODEL_TO_LOCAL}" == "s5cmd" ]; then
@@ -47,10 +53,12 @@ if [ $mode == "comfyui" ]; then
             echo "unknown option COPY_MODEL_TO_LOCAL = ${COPY_MODEL_TO_LOCAL}"
             exit 1
         fi
-        rm /home/ubuntu/comfy/ComfyUI/models
-        ln -s ${MOUNT_POINT} /home/ubuntu/comfy/ComfyUI/
-
-        echo "use COPY_MODEL_TO_LOCAL mode, make sure sync models to s3 when modified. aws s3 sync ${MOUNT_POINT} s3://${S3_BUCKET}/models"
+        if [ ! -L "/home/ubuntu/comfy/ComfyUI/models" ] || [ "$(readlink -f "/home/ubuntu/comfy/ComfyUI/models")" != "${MOUNT_POINT}" ]; then
+            echo "replace models path to ${MOUNT_POINT} ..."
+            rm /home/ubuntu/comfy/ComfyUI/models
+            ln -s ${MOUNT_POINT} /home/ubuntu/comfy/ComfyUI/
+        fi
+        echo "use COPY_MODEL_TO_LOCAL mode, make sure sync models to s3 when modified. use command: aws s3 sync ${MOUNT_POINT} s3://${S3_BUCKET}/models"
     fi
 
     /home/ubuntu/venv/bin/python3 main.py --listen 0.0.0.0 --port 8188
