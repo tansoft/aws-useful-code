@@ -32,13 +32,10 @@ if [ $mode == "comfyui" ]; then
             echo "check if it is a instance stroage: ${DEVICE} ..."
             if [ -b "${DEVICE}" ]; then
                 # 如果设备还没有挂载，判断为实例存储
-                if mount | grep -q "${DEVICE}"; then
+                if ! mount | grep -q "${DEVICE}"; then
                     echo "${DEVICE} is not mount, try to mount and use it ..."
-                    if ! blkid "${DEVICE}" > /dev/null 2>&1; then
-                        echo "format ${DEVICE} to ext4 file system ..."
-                        mkfs.ext4 -m 0 "${DEVICE}"
-                    fi
-                    mount "${DEVICE}" "${MOUNT_POINT}"
+                    sudo mkfs.ext4 -m 0 "${DEVICE}"
+                    sudo mount "${DEVICE}" "${MOUNT_POINT}"
                     chown -R ubuntu:ubuntu "${MOUNT_POINT}"
                     chmod -R 755 "${MOUNT_POINT}"
                     break
