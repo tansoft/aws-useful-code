@@ -36,8 +36,8 @@ if [ $mode == "comfyui" ]; then
                     echo "${DEVICE} is not mount, try to mount and use it ..."
                     sudo mkfs.ext4 -m 0 "${DEVICE}"
                     sudo mount "${DEVICE}" "${MOUNT_POINT}"
-                    chown -R ubuntu:ubuntu "${MOUNT_POINT}"
-                    chmod -R 755 "${MOUNT_POINT}"
+                    sudo chown -R ubuntu:ubuntu "${MOUNT_POINT}"
+                    sudo chmod -R 755 "${MOUNT_POINT}"
                     break
                 fi
             fi
