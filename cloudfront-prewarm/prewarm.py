@@ -1,5 +1,6 @@
 """
 CloudFront预热脚本，请先配置config.yaml文件。
+pip install requests dnspython
 python3 prewarm.py
 """
 
@@ -13,6 +14,38 @@ import functools
 import threading
 import contextlib
 import requests
+import dns.message
+import dns.query
+import dns.rdatatype
+import dns.edns
+
+DNS_WITH_EDNS_SUPPORT = '8.8.8.8'
+
+def dns_query_with_subnet(domain: str, 
+                         nameserver: str, 
+                         subnet: str,
+                         timeout: float = 5.0) -> dns.message.Message:
+    """
+    执行带有 EDNS Client Subnet 的 DNS 查询
+    Args:
+        domain: 要查询的域名
+        nameserver: DNS 服务器地址
+        subnet: 客户端子网 (CIDR 格式)
+        timeout: 查询超时时间(秒)
+    Returns:
+        dns.message.Message: DNS 响应消息
+    """
+    # 创建查询消息
+    query = dns.message.make_query(domain, dns.rdatatype.A)
+    # 解析子网信息
+    network, prefix = subnet.split('/')
+    prefix = int(prefix)
+    # 添加 EDNS Client Subnet 选项
+    client_subnet = dns.edns.ECSOption(address=network, srclen=prefix)
+    query.use_edns(options=[client_subnet])    
+    # 执行查询
+    response = dns.query.udp(query, nameserver, timeout=timeout)
+    return response
 
 def load_config():
     with open('config.yaml', 'r') as file:
@@ -85,10 +118,20 @@ socket.getaddrinfo = custom_getaddrinfo
 
 def warm(pop, cf_id, file_name, host, encoding, protocol):
     try:
-        # First resolve the POP domain IP
-        pop_ip = resolve_pop_ip(f'{cf_id}.{pop}.cloudfront.net')
-        if not pop_ip:
-            raise Exception(f'Failed to resolve IP for {pop}')
+        if pop.count('-') == 1:
+            # First resolve the POP domain IP
+            pop_ip = resolve_pop_ip(f'{cf_id}.{pop}.cloudfront.net')
+            if not pop_ip:
+                raise Exception(f'Failed to resolve IP for {pop}')
+        else:
+            # 通过域名解释ip，通过edns进行ip对应的cloudfront解释
+            region_ip = resolve_pop_ip(f'ec2.{pop}.amazonaws.com')
+            if not region_ip:
+                raise Exception(f'Failed to resolve IP for region {pop}')
+            subnet = region_ip.rsplit('.', 1)[0] + ".0/24"
+            response = dns_query_with_subnet(f'{cf_id}.cloudfront.net', DNS_WITH_EDNS_SUPPORT, subnet)
+            pop_ip = str(response.answer[0][0])
+            print(f'region {pop} ip {region_ip} pop {pop_ip}')
         headers = {
             'Host': host,
             'Connection': 'close'  # Ensure connection is closed after request

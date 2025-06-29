@@ -167,6 +167,7 @@ Tool #4: use_aws
     agent("列出美东一 g5.2xlarge g6.4xlarge 的OD和Spot价格")
 
 def test_mem0():
+    # https://github.com/strands-agents/samples/blob/222e5c1579fa31efc1bf9741e75d4442d050acc5/01-tutorials/01-fundamentals/07-memory-persistent-agents/personal_agent_with_memory.ipynb
     # pip install mem0ai opensearch-py faiss-cpu
     from strands_tools import mem0_memory
     import os
@@ -229,6 +230,11 @@ def test_wolfram_alpha():
     agent = Agent(tools=[wolfram_alpha])
     agent.tool.wolfram_alpha(query="What is the capital of France?")
 
+def test_custom_tools():
+    agent = Agent()
+    # 依赖工具 tools/weather_forecast.py 和 tools/air_pollution_forecast.py （自动加载）
+    print(agent("What's the weather and air pollution forecast in Seattle tmw?"))
+
 def debug_mode():
     # logging
     import logging
@@ -253,3 +259,4 @@ if __name__ == "__main__":
     #test_mem0()
     #test_memory()
     test_speak()
+    test_custom_tools()

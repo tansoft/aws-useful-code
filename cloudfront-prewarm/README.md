@@ -8,6 +8,7 @@
 
 ```bash
 wget https://github.com/tansoft/aws-useful-code/blob/main/cloudfront-prewarm/prewarm.py -O prewarm.py
+pip install requests dnspython
 ```
 
 * 根据预热需求，在目录中生成 config.yaml 配置文件
@@ -35,24 +36,43 @@ encodings:
   #- "br" # 同理，只支持 Brotli 的浏览器请求
   - "" # 没有指定Accept-Encoding字段，如客户端程序直接请求
 
-# 需要预热的 POP 点，可根据用户分布选择
+# 需要预热的 POP 点选择，可以是region名字和pop点名称，建议使用region名字。
+# 如果需要指定更多的POP点IP，可以在三方网站上，找到维护的 POP 点信息，再加以选择。
 # 这里可以查到比较全的pop点信息，https://www.feitsui.com/en/article/3
+# 注意由于pop点信息不是官方的，有可能会有pop点下线失效的情况，更推荐使用上面的指定region的方式。
 # 默认建议以下少数几个即可，对主要的区域性边缘缓存（Regional Edge Cache）做预热：https://aws.amazon.com/cloudfront/features/
 pops:
-  - "IAD89-C1" # North America (N.Virginia)
-  - "CMH68-P1" # North America (Ohio)
-  - "SFO53-C1" # North America (California)
-  - "HIO50-C1" # North America (Oregon)
-  - "GRU1-C2" # South America (São Paulo)
-  - "FRA50-C1" # Germany (Frankfurt)
-  - "DUB56-P1" # Ireland (Dublin)
-  - "LHR61-C2" # UK (London)
-  - "BOM54-P2" # India (Mumbai)
-  - "SIN2-P6" # Asia (Singapore)
-  - "NRT20-P2" # Japan (Tokyo)
-  - "ICN55-C1" # South Korea (Seoul)
-  - "SYD1-C1" # Australia (Sydney)
-  - "DXB52-P1" # Middle East (Dubai)
+  # 指定region的方式：
+  - "us-east-1" # North America (N.Virginia)
+  - "us-east-2" # North America (Ohio)
+  - "us-west-1" # North America (California)
+  - "us-west-2" # North America (Oregon)
+  - "sa-east-1" # South America (São Paulo)
+  - "eu-central-1" # Germany (Frankfurt)
+  - "eu-west-1" # Ireland (Dublin)
+  - "eu-west-2" # UK (London)
+  - "ap-south-1" # India (Mumbai)
+  - "ap-southeast-1" # Asia (Singapore)
+  - "ap-northeast-1" # Japan (Tokyo)
+  - "ap-northeast-2" # South Korea (Seoul)
+  - "ap-southeast-2" # Australia (Sydney)
+  - "me-central-1" # Middle East (Dubai)
+  - "ap-east-1" # China/Hong Kong (Hong Kong)
+  # 指定pop点的方式：
+  # - "IAD89-C1" # North America (N.Virginia)
+  # - "CMH68-P1" # North America (Ohio)
+  # - "SFO53-C1" # North America (California)
+  # - "HIO50-C1" # North America (Oregon)
+  # - "GRU1-C2" # South America (São Paulo)
+  # - "FRA50-C1" # Germany (Frankfurt)
+  # - "DUB56-P1" # Ireland (Dublin)
+  # - "LHR61-C2" # UK (London)
+  # - "BOM54-P2" # India (Mumbai)
+  # - "SIN2-P6" # Asia (Singapore)
+  # - "NRT20-P2" # Japan (Tokyo)
+  # - "ICN55-C1" # South Korea (Seoul)
+  # - "SYD1-C1" # Australia (Sydney)
+  # - "DXB52-P1" # Middle East (Dubai)
   # - "HKG62-C1" # China/Hong Kong (Hong Kong)
 ```
 
