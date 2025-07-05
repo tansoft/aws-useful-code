@@ -41,6 +41,14 @@ Parameters:
       - m7g.4xlarge
     Description: EC2 instance type (t3/t4g for light workloads, m6i/m7g for compute-intensive workloads)
 
+  OSType:
+    Type: String
+    Default: AmazonLinux2023
+    AllowedValues:
+      - AmazonLinux2023
+      - Ubuntu22.04
+    Description: Operating System type (AmazonLinux2023 or Ubuntu22.04)
+
   VolumeSize:
     Type: Number
     Default: 50
@@ -68,6 +76,7 @@ Conditions:
   IsArmInstance: !Or
     - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "t4g"]
     - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "m7g"]
+  IsAmazonLinux: !Equals [!Ref OSType, "AmazonLinux2023"]
   HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, ""]]
   HasLambdaEdge: !Not [!Equals [!Ref LambdaEdgeVersionArn, ""]]
 
@@ -137,9 +146,15 @@ Resources:
       InstanceType: !Ref InstanceType
       SubnetId: !Ref ExistSubnetId
       ImageId: !If
-        - IsArmInstance
-        - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
-        - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+        - IsAmazonLinux
+        - !If
+          - IsArmInstance
+          - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+          - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+        - !If
+          - IsArmInstance
+          - "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id}}"
+          - "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
         - !Ref DevInstanceSecurityGroup
@@ -151,10 +166,10 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          cat <<"EOT" | sudo -E -H -u ec2-user bash
+          cat <<"EOT" | sudo -E -H -u ${!If [IsAmazonLinux, 'ec2-user', 'ubuntu']} bash
           TEMP_FILE=$(mktemp)
           trap 'rm -f "$TEMP_FILE"' EXIT
-          curl -fsSL https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/secure-dev-env/code-server-install-amazon2023.sh > "$TEMP_FILE"
+          curl -fsSL https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/secure-dev-env/Code-Server-Install-${OSType}.sh > "$TEMP_FILE"
           chmod +x "$TEMP_FILE"
           while true
           do
