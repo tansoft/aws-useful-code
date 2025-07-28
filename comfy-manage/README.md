@@ -319,7 +319,6 @@ EOF
 
 cat << EOF | sudo tee /etc/systemd/system/comfy-manage.service
 [Unit]
-[Unit]
 Description=ComfyUI Service
 After=network-online.target
 Requires=network-online.target
