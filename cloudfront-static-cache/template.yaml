@@ -74,22 +74,18 @@ Resources:
           def handler(event, context):
               print(event)
               # Get the request from the event
+              response = event['Records'][0]['cf']['response']
               request = event['Records'][0]['cf']['request']
               
               try:
+                  if int(response['status']) < 400 and int(response['status']) > 599:
+                      return response
                   # Check if the object exists in S3
                   s3 = boto3.client('s3')
                   bucket_domain = request['origin']['s3']['domainName']
                   bucket_name = bucket_domain.split('.')[0]
                   path = request['uri']
                   key = path[1:] if path.startswith('/') else path
-                  
-                  try:
-                      s3.head_object(Bucket=bucket_name, Key=key)
-                      return request  # Object exists, continue with the request
-                  except:
-                      pass  # Object doesn't exist, continue with redirect logic
-                  
                   # Get the origin domain from request headers
                   origin_domain = request['origin']['s3']['customHeaders']['x-origin-domain'][0]['value']
                   
@@ -99,8 +95,8 @@ Resources:
                   headers = {}
                   if 'headers' in request:
                       for header_name, header_value_list in request['headers'].items():
-                          headers[header_name] = [item['value'] for item in header_value_list]
-                  
+                          if not header_name.startswith('cloudfront-') and header_name != 'host':
+                              headers[header_name] = [item['value'] for item in header_value_list]
                   message = {
                       'bucket': bucket_name,
                       'key': key,
@@ -132,7 +128,8 @@ Resources:
                           'cache-control': [{
                               'key': 'Cache-Control',
                               'value': 'no-cache'
-                          }]
+                          }],
+                          'body': ''
                       }
                   }
                   
@@ -198,12 +195,21 @@ Resources:
               """Fetch content from origin server"""
               try:
                   url = f'https://{domain}{path}'
-                  headers = request_headers or {}
+                  # Process headers - convert arrays to single values
+                  processed_headers = {}
+                  if request_headers:
+                      for key, value in request_headers.items():
+                          # If value is an array, take the first element
+                          if isinstance(value, list) and value:
+                              processed_headers[key] = value[0]
+                          else:
+                              processed_headers[key] = value
+
                   # Ensure User-Agent is set if not provided
-                  if 'user-agent' not in {k.lower(): v for k, v in headers.items()}:
-                      headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+                  if 'user-agent' not in {k.lower(): v for k, v in processed_headers.items()}:
+                      processed_headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
                   
-                  req = urllib.request.Request(url, headers=headers)
+                  req = urllib.request.Request(url, headers=processed_headers)
                   with urllib.request.urlopen(req) as response:
                       if response.status == 200:
                           content = response.read()
