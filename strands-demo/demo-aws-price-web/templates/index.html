@@ -218,7 +218,7 @@
                             <li>比较不同实例类型的价格和性能</li>
                             <li>查询AWS服务的价格信息</li>
                         </ul>
-                        <p>例如，你可以尝试："列出美东一 g5.2xlarge g6.4xlarge 的OD和Spot价格，使用表格返回"</p>
+                        <p>例如，你可以尝试："美东一 g5.2xlarge g6.4xlarge 的OD和Spot价格"</p>
                     </div>
                 </div>
             </div>
@@ -306,7 +306,7 @@
 
                 // Create a streaming response container
                 const streamingMsgId = 'streaming-response-' + Date.now();
-                const responseDiv = addBotMessage('<div class="streaming-status">正在连接...</div>', streamingMsgId);
+                const responseDiv = addBotMessage('<div class="streaming-status">思考中...</div>', streamingMsgId);
                 const streamingContent = responseDiv.querySelector('.markdown-content');
 
                 // Track the response building process
@@ -384,19 +384,35 @@
                         break;
 
                     case 'partial':
-                        const currentContent = contentElement.innerHTML;
-                        if (!currentContent.includes(data.content)) {
-                            contentElement.innerHTML += `<div class="partial-result">${data.content}</div>`;
+                        // Handle streaming deltas
+                        // Check if we already have a streaming container
+                        let streamContainer = contentElement.querySelector('.streaming-container');
+
+                        if (!streamContainer) {
+                            // First partial response, create container
+                            streamContainer = document.createElement('div');
+                            streamContainer.className = 'streaming-container';
+                            contentElement.innerHTML = ''; // Clear any previous status/progress
+                            contentElement.appendChild(streamContainer);
                         }
+
+                        // Append the new content
+                        streamContainer.innerHTML += data.content;
                         break;
 
                     case 'response':
-                        // Show the final response with markdown parsing
+                        // Show the response with markdown parsing
+                        // If it's a final response after partials, replace everything
                         contentElement.innerHTML = marked.parse(data.content);
                         break;
 
                     case 'complete':
                         // Response is fully complete
+                        // Convert any remaining streaming content to proper markdown
+                        const streamingContainer = contentElement.querySelector('.streaming-container');
+                        if (streamingContainer) {
+                            contentElement.innerHTML = marked.parse(streamingContainer.innerHTML);
+                        }
                         break;
 
                     case 'error':

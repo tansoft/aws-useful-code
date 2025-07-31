@@ -1,4 +1,5 @@
-flask
+fastapi
+uvicorn
 boto3
 strands-agents
 marked

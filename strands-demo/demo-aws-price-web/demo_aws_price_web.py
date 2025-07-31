@@ -2,18 +2,27 @@ import logging
 import boto3
 import json
 import time
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from strands import Agent, tool
 from strands.models import BedrockModel
 
 # Set up logging
-logging.getLogger("strands").setLevel(logging.ERROR)
+logging.getLogger("strands").setLevel(logging.INFO)  # Change to INFO to see more details
 logging.basicConfig(
-    format="%(levelname)s | %(name)s | %(message)s",
+    level=logging.INFO,  # Set to INFO level
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     handlers=[logging.StreamHandler()]
 )
 
-app = Flask(__name__)
+app = FastAPI()
+
+class PromptRequest(BaseModel):
+    message: str
 
 class AWSPricingTool:
     """Tool for querying AWS pricing information."""
@@ -164,106 +173,43 @@ agent = Agent(
 3. get_service_pricing - 获取特定服务的价格信息
 4. get_instance_pricing - 获取特定EC2实例类型的价格信息
 
-请提供准确的AWS价格信息，并解释价格结构、可用区域和服务特性。""",
-    tools=custom_tools
+请提供准确的AWS价格信息，并解释价格结构、可用区域和服务特性。
+请以中文回答，并在需要时提供相关文档链接。
+价格信息请使用表格返回。""",
+    tools=custom_tools,
 )
 
-@app.route('/')
-def index():
-    """Render the main chat interface."""
-    return render_template('index.html')
+# Log available methods on agent to help debug
+agent_methods = [method for method in dir(agent) if not method.startswith('_')]
+logging.info(f"Available agent methods: {agent_methods}")
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    """Legacy non-streaming chat API for backwards compatibility."""
-    try:
-        # Get user input from request
-        data = request.get_json()
-        user_input = data.get('message', '')
-        
-        # Process with agent
-        response = agent(user_input + "，请以中文回答，并在需要时提供相关价格和文档链接。")
-        
-        # Convert agent result to string if needed
-        if not isinstance(response, str):
-            response = str(response)
-            
-        return jsonify({
-            'status': 'success',
-            'response': response
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+templates = Jinja2Templates(directory="templates")
+# app.mount("/", StaticFiles(directory="templates"), name="static")
 
-@app.route('/api/chat_stream', methods=['POST'])
-def chat_stream():
-    """Handle streaming chat API requests."""
-    
-    @stream_with_context
-    def generate_streaming_response():
+@app.get("/")
+async def read_root(request: Request):
+    # 注意：必须传递request参数
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.post("/api/chat_stream")
+async def stream_response(request: PromptRequest):
+    async def generate():
         try:
-            # Get user input from request
-            data = request.get_json()
-            user_input = data.get('message', '')
-            
-            # Send initial connection event
-            yield f"data: {json.dumps({'type': 'connected', 'message': '已连接到 AWS 价格助手'})}\n\n"
-            
-            # Check if query involves specific AWS operations
-            needs_services = 'services' in user_input.lower() or '服务' in user_input.lower()
-            needs_instances = any(keyword in user_input.lower() for keyword in ['ec2', 'instance', 't2', 'm5', 'c5', 'r5', '实例'])
-            needs_pricing = any(keyword in user_input.lower() for keyword in ['price', 'cost', 'pricing', '价格', '费用'])
-            
-            progress = 0
-            total_steps = sum([needs_services, needs_instances, needs_pricing, True])  # +1 for AI processing
-            
-            # Fetch services if needed
-            if needs_services:
-                progress += 1
-                yield f"data: {json.dumps({'type': 'step', 'message': '正在获取 AWS 服务列表...', 'progress': progress/total_steps*100})}\n\n"
-                services = json.loads(aws_pricing_tool.get_services())
-                service_count = len(services.get("services", []))
-                yield f"data: {json.dumps({'type': 'partial', 'content': f'已获取 {service_count} 个 AWS 服务'})}\n\n"
-            
-            # Fetch instance types if needed
-            if needs_instances:
-                progress += 1
-                yield f"data: {json.dumps({'type': 'step', 'message': '正在获取 EC2 实例类型...', 'progress': progress/total_steps*100})}\n\n"
-                instances = json.loads(aws_pricing_tool.get_instance_types())
-                instance_count = len(instances.get("instance_types", []))
-                yield f"data: {json.dumps({'type': 'partial', 'content': f'已获取 {instance_count} 种 EC2 实例类型'})}\n\n"
-            
-            # Fetch pricing if needed
-            if needs_pricing:
-                progress += 1
-                yield f"data: {json.dumps({'type': 'step', 'message': '正在获取价格信息...', 'progress': progress/total_steps*100})}\n\n"
-                # This step will be handled by the agent through the provided tools
-                yield f"data: {json.dumps({'type': 'partial', 'content': '正在分析价格数据'})}\n\n"
-            
-            # Final AI processing
-            progress += 1
-            yield f"data: {json.dumps({'type': 'step', 'message': '正在生成回复...', 'progress': progress/total_steps*100})}\n\n"
-            
-            # Process with agent
-            response = agent(user_input + "，请以中文回答，并在需要时提供相关价格和文档链接。")
-            
-            # Convert agent result to string if needed
-            if not isinstance(response, str):
-                response = str(response)
-            
-            # Send final response
-            yield f"data: {json.dumps({'type': 'response', 'content': response})}\n\n"
+            alltext = ''
+            async for event in agent.stream_async(request.message):
+                if "data" in event:
+                    # text = event["data"].replace("<","&lt;").replace(">","&gt;")
+                    alltext += event["data"]
+                    alltext = alltext.replace('<thinking>','***').replace('</thinking>',"***\n\n")
+                    yield f"data: {json.dumps({'type': 'response', 'content': alltext})}\n\n"
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
-            
+
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
-    
-    return Response(
-        generate_streaming_response(),
-        mimetype='text/event-stream',
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
         headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
@@ -272,4 +218,4 @@ def chat_stream():
     )
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
