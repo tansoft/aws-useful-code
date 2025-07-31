@@ -7,7 +7,7 @@
 * 下载脚本 [prewarm.py](https://github.com/tansoft/aws-useful-code/blob/main/cloudfront-prewarm/prewarm.py)
 
 ```bash
-wget https://github.com/tansoft/aws-useful-code/blob/main/cloudfront-prewarm/prewarm.py -O prewarm.py
+wget https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/cloudfront-prewarm/prewarm.py -O prewarm.py
 pip install requests dnspython
 ```
 
