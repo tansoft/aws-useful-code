@@ -24,100 +24,12 @@ app = FastAPI()
 class PromptRequest(BaseModel):
     message: str
 
-class AWSPricingTool:
-    """Tool for querying AWS pricing information."""
-
-    def get_services(self):
-        """Get list of available AWS services."""
-        try:
-            pricing_client = boto3.client('pricing', region_name='us-east-1')
-            response = pricing_client.describe_services()
-            services = [service['ServiceCode'] for service in response['Services']]
-            return json.dumps({"services": services})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    def get_instance_types(self):
-        """Get list of available EC2 instance types."""
-        try:
-            ec2_client = boto3.client('ec2', region_name='us-east-1')
-            response = ec2_client.describe_instance_types()
-            instance_types = [instance['InstanceType'] for instance in response['InstanceTypes']]
-            return json.dumps({"instance_types": instance_types})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    def get_service_pricing(self, service_code):
-        """Get pricing information for a specific service."""
-        try:
-            pricing_client = boto3.client('pricing', region_name='us-east-1')
-            response = pricing_client.get_products(
-                ServiceCode=service_code,
-                MaxResults=100
-            )
-            products = []
-            for price_item in response.get('PriceList', []):
-                products.append(json.loads(price_item))
-            
-            return json.dumps({"pricing": products})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-    
-    def get_instance_pricing(self, instance_type, region='us-east-1'):
-        """Get pricing information for a specific EC2 instance type."""
-        try:
-            pricing_client = boto3.client('pricing', region_name='us-east-1')
-            filters = [
-                {'Type': 'TERM_MATCH', 'Field': 'instanceType', 'Value': instance_type},
-                {'Type': 'TERM_MATCH', 'Field': 'location', 'Value': self._get_region_name(region)},
-                {'Type': 'TERM_MATCH', 'Field': 'tenancy', 'Value': 'Shared'},
-                {'Type': 'TERM_MATCH', 'Field': 'operatingSystem', 'Value': 'Linux'},
-                {'Type': 'TERM_MATCH', 'Field': 'preInstalledSw', 'Value': 'NA'}
-            ]
-            
-            response = pricing_client.get_products(
-                ServiceCode='AmazonEC2',
-                Filters=filters
-            )
-            
-            products = []
-            for price_item in response.get('PriceList', []):
-                products.append(json.loads(price_item))
-            
-            return json.dumps({"pricing": products})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-    
-    def _get_region_name(self, region_code):
-        """Convert region code to region name for pricing API."""
-        region_names = {
-            'us-east-1': 'US East (N. Virginia)',
-            'us-east-2': 'US East (Ohio)',
-            'us-west-1': 'US West (N. California)',
-            'us-west-2': 'US West (Oregon)',
-            'ap-east-1': 'Asia Pacific (Hong Kong)',
-            'ap-south-1': 'Asia Pacific (Mumbai)',
-            'ap-northeast-1': 'Asia Pacific (Tokyo)',
-            'ap-northeast-2': 'Asia Pacific (Seoul)',
-            'ap-southeast-1': 'Asia Pacific (Singapore)',
-            'ap-southeast-2': 'Asia Pacific (Sydney)',
-            'ca-central-1': 'Canada (Central)',
-            'eu-central-1': 'EU (Frankfurt)',
-            'eu-west-1': 'EU (Ireland)',
-            'eu-west-2': 'EU (London)',
-            'eu-west-3': 'EU (Paris)',
-            'eu-north-1': 'EU (Stockholm)',
-            'sa-east-1': 'South America (São Paulo)'
-        }
-        return region_names.get(region_code, 'US East (N. Virginia)')
-
-# Initialize AWS pricing tool
-aws_pricing_tool = AWSPricingTool()
-
 # Initialize Bedrock model
 bedrock_model = BedrockModel(
-    model_id="us.amazon.nova-pro-v1:0",
-    params={"max_tokens": 300000, "temperature": 0.1}
+    #model_id="us.amazon.nova-pro-v1:0",
+    model_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    # "max_tokens": 300000
+    params={"temperature": 0.1}
 )
 
 # Define tools using @tool decorator
@@ -126,52 +38,181 @@ def get_services():
     """
     Get a list of available AWS services.
     """
-    return aws_pricing_tool.get_services()
+    try:
+        print('get_services')
+        pricing_client = boto3.client('pricing', region_name='us-east-1')
+        response = pricing_client.describe_services()
+        services = [service['ServiceCode'] for service in response['Services']]
+        return json.dumps({"services": services})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
 
 @tool
 def get_instance_types():
     """
     Get a list of available EC2 instance types.
     """
-    return aws_pricing_tool.get_instance_types()
+    try:
+        print('get_instance_types')
+        ec2_client = boto3.client('ec2', region_name='us-east-1')
+        response = ec2_client.describe_instance_types()
+        instance_types = [instance['InstanceType'] for instance in response['InstanceTypes']]
+        print('instance_types', len(instance_types))
+        return json.dumps({"instance_types": instance_types})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
 
 @tool
-def get_service_pricing(service_code: str):
+def get_service_pricing(service_code: str, region: str = "us-east-1"):
     """
     Get pricing information for a specific service.
     
     Args:
         service_code: The service code (e.g., AmazonEC2, AmazonRDS)
+        region: AWS region code (e.g., us-east-1)
     """
-    return aws_pricing_tool.get_service_pricing(service_code)
+    try:
+        print('get_service_pricing', service_code, region)
+        pricing_client = boto3.client('pricing', region_name='us-east-1')
+        filters = [
+            {'Type': 'TERM_MATCH', 'Field': 'location', 'Value': _get_region_name(region)},
+        ]
+        response = pricing_client.get_products(
+            ServiceCode=service_code,
+            Filters=filters,
+            MaxResults=100
+        )
+        products = []
+        for price_item in response.get('PriceList', []):
+            products.append(json.loads(price_item))
+        print('products:', len(products))
+        return json.dumps({"pricing": products})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
+
+def _get_region_name(region_code):
+    """Convert region code to region name for pricing API."""
+    region_names = {
+        'af-south-1': 'Africa (Cape Town)',
+        'ap-east-1': 'Asia Pacific (Hong Kong)',
+        'ap-east-2': 'Asia Pacific (Taipei)',
+        'ap-northeast-1': 'Asia Pacific (Tokyo)',
+        'ap-northeast-2': 'Asia Pacific (Seoul)',
+        'ap-northeast-3': 'Asia Pacific (Osaka)',
+        'ap-south-1': 'Asia Pacific (Mumbai)',
+        'ap-south-2': 'Asia Pacific (Hyderabad)',
+        'ap-southeast-1': 'Asia Pacific (Singapore)',
+        'ap-southeast-2': 'Asia Pacific (Sydney)',
+        'ap-southeast-3': 'Asia Pacific (Jakarta)',
+        'ap-southeast-4': 'Asia Pacific (Melbourne)',
+        'ap-southeast-5': 'Asia Pacific (Malaysia)',
+        'ap-southeast-7': 'Asia Pacific (Thailand)',
+        'ca-central-1': 'Canada (Central)',
+        'ca-west-1': 'Canada West (Calgary)',
+        'eu-central-1': 'EU (Frankfurt)',
+        'eu-central-2': 'EU (Zurich)',
+        'eu-north-1': 'EU (Stockholm)',
+        'eu-south-1': 'EU (Milan)',
+        'eu-south-2': 'EU (Spain)',
+        'eu-west-1': 'EU (Ireland)',
+        'eu-west-2': 'EU (London)',
+        'eu-west-3': 'EU (Paris)',
+        'il-central-1': 'Israel (Tel Aviv)',
+        'me-central-1': 'Middle East (UAE)',
+        'me-south-1': 'Middle East (Bahrain)',
+        'mx-central-1': 'Mexico (Central)',
+        'sa-east-1': 'South America (São Paulo)',
+        'us-east-1': 'US East (N. Virginia)',
+        'us-east-2': 'US East (Ohio)',
+        'us-west-1': 'US West (N. California)',
+        'us-west-2': 'US West (Oregon)'
+    }
+    return region_names.get(region_code, 'US East (N. Virginia)')
 
 @tool
-def get_instance_pricing(instance_type: str, region: str = "us-east-1"):
+def get_instance_pricing(instance_type: str = 'm6g', region: str = "us-east-1", operatingSystem: str = "Linux"):
     """
     Get pricing information for a specific EC2 instance type.
     
     Args:
         instance_type: The EC2 instance type (e.g., t2.micro, m5.large)
         region: AWS region code (e.g., us-east-1)
+        operatingSystem: Operating System (e.g., Linux)
     """
-    return aws_pricing_tool.get_instance_pricing(instance_type, region)
+    try:
+        print('get_instance_pricing', instance_type, region, operatingSystem)
+        pricing_client = boto3.client('pricing', region_name='us-east-1')
+        filters = [
+            {'Type': 'TERM_MATCH', 'Field': 'instanceType', 'Value': instance_type},
+            {'Type': 'TERM_MATCH', 'Field': 'location', 'Value': _get_region_name(region)},
+            {'Type': 'TERM_MATCH', 'Field': 'tenancy', 'Value': 'Shared'},
+            {'Type': 'TERM_MATCH', 'Field': 'operatingSystem', 'Value': operatingSystem},
+            {'Type': 'TERM_MATCH', 'Field': 'preInstalledSw', 'Value': 'NA'}
+        ]        
+        response = pricing_client.get_products(
+            ServiceCode='AmazonEC2',
+            Filters=filters,
+        )
+        products = []
+        for price_item in response.get('PriceList', []):
+            products.append(json.loads(price_item))
+        print('products', len(products))
+        return json.dumps({"pricing": products})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
+
+@tool
+def get_spot_instance_pricing(instance_type: str = 'm6g', region: str = "us-east-1", operatingSystem: str = "Linux"):
+    """
+    Get spot pricing information for a specific EC2 instance type.
+    
+    Args:
+        instance_type: The EC2 instance type (e.g., t2.micro, m5.large)
+        region: AWS region code (e.g., us-east-1)
+        operatingSystem: Operating System (e.g., Linux)
+    """
+    try:
+        print('get_spot_instance_pricing', instance_type, region, operatingSystem)
+        ec2_client = boto3.client('ec2', region_name=region)
+        if operatingSystem == "Linux":
+            operatingSystem = "Linux/UNIX (Amazon VPC)"
+        elif operatingSystem == "Windows":
+            operatingSystem = "Windows (Amazon VPC)"
+        response = ec2_client.describe_spot_price_history(
+            InstanceTypes=[instance_type],
+            ProductDescriptions=[operatingSystem]
+        )
+        products = []
+        for price_item in response['SpotPriceHistory']:
+            products.append({"SpotPrice": price_item['SpotPrice'], "AvailabilityZone": price_item['AvailabilityZone'], "InstanceType": price_item['InstanceType']})
+        print('spot', len(products))
+        return json.dumps({"pricing": products})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
 
 # List our custom tools
 custom_tools = [
-    get_services,
     get_instance_types,
+    get_spot_instance_pricing,
+    get_instance_pricing,
+    get_services,
     get_service_pricing,
-    get_instance_pricing
 ]
 
 # Create the agent with our custom tools
 agent = Agent(
     model=bedrock_model,
     system_prompt="""你是一个AWS价格专家，可以提供AWS服务、实例类型和价格信息。你可以使用以下工具：
-1. get_services - 获取可用AWS服务列表
-2. get_instance_types - 获取可用EC2实例类型列表
-3. get_service_pricing - 获取特定服务的价格信息
-4. get_instance_pricing - 获取特定EC2实例类型的价格信息
+1. get_instance_types - 获取可用EC2实例类型列表
+2. get_spot_instance_pricing - 获取EC2竞价实例类型的价格信息
+3. get_instance_pricing - 获取EC2按需和预留实例类型的价格信息
+4. get_services - 获取可用AWS服务列表
+5. get_service_pricing - 获取特定服务的价格信息
 
 请提供准确的AWS价格信息，并解释价格结构、可用区域和服务特性。
 请以中文回答，并在需要时提供相关文档链接。
