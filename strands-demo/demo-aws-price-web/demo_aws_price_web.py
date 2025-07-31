@@ -39,11 +39,28 @@ def get_services():
     Get a list of available AWS services.
     """
     try:
-        print('get_services')
-        pricing_client = boto3.client('pricing', region_name='us-east-1')
-        response = pricing_client.describe_services()
-        services = [service['ServiceCode'] for service in response['Services']]
-        return json.dumps({"services": services})
+        cache = True
+        all_services = []
+        print('get_services', cache)
+        if cache:
+            all_services = ['A4B', 'ACM', 'AWSAmplify', 'AWSAppFabric', 'AWSAppRunner', 'AWSAppStudio', 'AWSAppSync', 'AWSApplicationMigrationSvc', 'AWSB2Bi', 'AWSBCMPricingCalculator', 'AWSBackup', 'AWSBillingConductor', 'AWSBudgets', 'AWSCertificateManager', 'AWSCleanRooms', 'AWSCloudFormation', 'AWSCloudMap', 'AWSCloudTrail', 'AWSCloudWAN', 'AWSCodeArtifact', 'AWSCodeCommit', 'AWSCodeDeploy', 'AWSCodePipeline', 'AWSComputeOptimizer', 'AWSConfig', 'AWSCostExplorer', 'AWSDataExchange', 'AWSDataSync', 'AWSDataTransfer', 'AWSDatabaseMigrationSvc', 'AWSDeepRacer', 'AWSDeveloperSupport', 'AWSDeviceFarm', 'AWSDirectConnect', 'AWSDirectoryService', 'AWSELB', 'AWSElasticDisasterRecovery', 'AWSElementalMediaConvert', 'AWSElementalMediaLive', 'AWSElementalMediaPackage', 'AWSElementalMediaStore', 'AWSElementalMediaTailor', 'AWSEndUserMessaging3pFees', 'AWSEnterpriseOnRamp', 'AWSEntityResolution', 'AWSEvents', 'AWSFIS', 'AWSFMS', 'AWSGlobalAccelerator', 'AWSGlueElasticViews', 'AWSGlue', 'AWSGreengrass', 'AWSGroundStation', 'AWSIAMAccessAnalyzer', 'AWSIoT1Click', 'AWSIoTAnalytics', 'AWSIoTEvents', 'AWSIoTFleetWise', 'AWSIoTSiteWise', 'AWSIoTThingsGraph', 'AWSIoT', 'AWSLakeFormation', 'AWSLambda', 'AWSM2', 'AWSMDC', 'AWSMediaConnect', 'AWSMigrationHubRefactorSpaces', 'AWSNetworkFirewall', 'AWSOutposts', 'AWSPCS', 'AWSPrivate5G', 'AWSQueueService', 'AWSR53AppRecoveryController', 'AWSResilienceHub', 'AWSRoboMaker', 'AWSSecretsManager', 'AWSSecurityHub', 'AWSServiceCatalog', 'AWSShield', 'AWSStorageGatewayDeepArchive', 'AWSStorageGateway', 'AWSSupplyChain', 'AWSSupportBusiness', 'AWSSupportEnterprise', 'AWSSystemsManager', 'AWSTelcoNetworkBuilder', 'AWSTransfer', 'AWSWickr', 'AWSWisdom', 'AWSXRay', 'AlexaTopSites', 'AlexaWebInfoService', 'AmazonA2I', 'AmazonApiGateway', 'AmazonAppStream', 'AmazonAthena', 'AmazonBedrockService', 'AmazonBedrock', 'AmazonBraket', 'AmazonChimeBusinessCalling', 'AmazonChimeCallMeAMCS', 'AmazonChimeCallMe', 'AmazonChimeDialInAMCS', 'AmazonChimeDialin', 'AmazonChimeFeatures', 'AmazonChimeServices', 'AmazonChimeVoiceConnector', 'AmazonChime', 'AmazonCloudDirectory', 'AmazonCloudFront', 'AmazonCloudSearch', 'AmazonCloudWatch', 'AmazonCodeWhisperer', 'AmazonCognitoSync', 'AmazonCognito', 'AmazonConnectCases', 'AmazonConnectVoiceID', 'AmazonConnect', 'AmazonDAX', 'AmazonDataZone', 'AmazonDeadline', 'AmazonDetective', 'AmazonDevOpsGuru', 'AmazonDocDB', 'AmazonDynamoDB', 'AmazonEC2', 'AmazonECRPublic', 'AmazonECR', 'AmazonECS', 'AmazonEFS', 'AmazonEI', 'AmazonEKSAnywhere', 'AmazonEKS', 'AmazonES', 'AmazonETS', 'AmazonEVS', 'AmazonElastiCache', 'AmazonFSx', 'AmazonFinSpace', 'AmazonForecast', 'AmazonFraudDetector', 'AmazonGameLiftStreams', 'AmazonGameLift', 'AmazonGlacier', 'AmazonGrafana', 'AmazonGuardDuty', 'AmazonHealthLake', 'AmazonHoneycode', 'AmazonIVSChat', 'AmazonIVS', 'AmazonInspectorV2', 'AmazonInspector', 'AmazonKendra', 'AmazonKinesisAnalytics', 'AmazonKinesisFirehose', 'AmazonKinesisVideo', 'AmazonKinesis', 'AmazonLex', 'AmazonLightsail', 'AmazonLocationService', 'AmazonLookoutEquipment', 'AmazonLookoutMetrics', 'AmazonLookoutVision', 'AmazonMCS', 'AmazonML', 'AmazonMQ', 'AmazonMSK', 'AmazonMWAA', 'AmazonMacie', 'AmazonManagedBlockchain', 'AmazonMedicalImaging', 'AmazonMemoryDB', 'AmazonMonitron', 'AmazonNeptune', 'AmazonOmics', 'AmazonPersonalize', 'AmazonPinpoint', 'AmazonPolly', 'AmazonPrometheus', 'AmazonQLDB', 'AmazonQ', 'AmazonQuickSight', 'AmazonRDS', 'AmazonRedshift', 'AmazonRekognition', 'AmazonRoute53', 'AmazonS3GlacierDeepArchive', 'AmazonS3', 'AmazonSES', 'AmazonSNS', 'AmazonSWF', 'AmazonSageMaker', 'AmazonSecurityLake', 'AmazonSimpleDB', 'AmazonStates', 'AmazonSumerian', 'AmazonTextract', 'AmazonTimestream', 'AmazonVPC', 'AmazonVerifiedPermissions']
+        else:
+            pricing_client = boto3.client('pricing', region_name='us-east-1')
+            all_services = []        
+            next_token = None
+            while True:
+                params = {'MaxResults': 100}
+                if next_token:
+                    params['NextToken'] = next_token
+                response = pricing_client.describe_services(**params)
+                services = [service['ServiceCode'] for service in response['Services']]
+                all_services.extend(services)
+                if 'NextToken' in response:
+                    next_token = response['NextToken']
+                else:
+                    break
+        print('all_services', len(all_services))
+        return json.dumps({"services": all_services})
     except Exception as e:
         print('error', e)
         return json.dumps({"error": str(e)})
