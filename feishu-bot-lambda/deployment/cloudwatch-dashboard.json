@@ -1,0 +1,300 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "function.calls", "function", "receive_handler", "status", "success" ],
+          [ "...", "process_handler", ".", "." ],
+          [ "...", "monitor_handler", ".", "." ],
+          [ "...", "receive_handler", ".", "error" ],
+          [ "...", "process_handler", ".", "." ],
+          [ "...", "monitor_handler", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Function Invocations",
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "function.duration", "function", "receive_handler", "status", "success" ],
+          [ "...", "process_handler", ".", "." ],
+          [ "...", "monitor_handler", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Function Duration",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "function.errors", "function", "receive_handler" ],
+          [ "...", "process_handler" ],
+          [ "...", "monitor_handler" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Function Errors",
+        "period": 300,
+        "stat": "Sum",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "message.processed", "message_type", "text", "status", "success" ],
+          [ "...", "image", ".", "." ],
+          [ "...", "file", ".", "." ],
+          [ "...", "text", ".", "error" ],
+          [ "...", "image", ".", "." ],
+          [ "...", "file", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Message Processing",
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "message.queue_depth" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Message Queue Depth",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "api.requests", "api", "feishu_send_message", "status_class", "2xx" ],
+          [ "...", "4xx" ],
+          [ "...", "5xx" ],
+          [ "...", "feishu_get_token", ".", "2xx" ],
+          [ "...", "4xx" ],
+          [ "...", "5xx" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Feishu API Requests",
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "api.response_time", "api", "feishu_send_message" ],
+          [ "...", "feishu_get_token" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Feishu API Response Time",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "system.memory_usage_mb" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "System Memory Usage",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 18,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "FeishuBot", "system.health" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "System Health Status",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 1
+          }
+        }
+      }
+    },
+    {
+      "type": "log",
+      "x": 16,
+      "y": 18,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "query": "SOURCE '/aws/lambda/feishu-bot-dev-receive'\n| SOURCE '/aws/lambda/feishu-bot-dev-process'\n| SOURCE '/aws/lambda/feishu-bot-dev-monitor'\n| fields @timestamp, level, message, function, duration_ms, error_type\n| filter level = \"ERROR\"\n| sort @timestamp desc\n| limit 20",
+        "region": "us-east-1",
+        "title": "Recent Errors",
+        "view": "table"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 24,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "Invocations", "FunctionName", "feishu-bot-dev-receive" ],
+          [ ".", "Duration", ".", "." ],
+          [ ".", "Errors", ".", "." ],
+          [ ".", "Throttles", ".", "." ],
+          [ ".", "Invocations", ".", "feishu-bot-dev-process" ],
+          [ ".", "Duration", ".", "." ],
+          [ ".", "Errors", ".", "." ],
+          [ ".", "Throttles", ".", "." ],
+          [ ".", "Invocations", ".", "feishu-bot-dev-monitor" ],
+          [ ".", "Duration", ".", "." ],
+          [ ".", "Errors", ".", "." ],
+          [ ".", "Throttles", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "AWS Lambda Metrics",
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 30,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/SQS", "NumberOfMessagesSent", "QueueName", "feishu-bot-dev-messages" ],
+          [ ".", "NumberOfMessagesReceived", ".", "." ],
+          [ ".", "ApproximateNumberOfVisibleMessages", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "SQS Queue Metrics",
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 30,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/ApiGateway", "Count", "ApiName", "feishu-bot-dev-api" ],
+          [ ".", "Latency", ".", "." ],
+          [ ".", "4XXError", ".", "." ],
+          [ ".", "5XXError", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "API Gateway Metrics",
+        "period": 300,
+        "stat": "Sum"
+      }
+    }
+  ]
+}

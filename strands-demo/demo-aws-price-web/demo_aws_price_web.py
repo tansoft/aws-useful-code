@@ -150,6 +150,22 @@ def _get_region_name(region_code):
     return region_names.get(region_code, 'US East (N. Virginia)')
 
 @tool
+def get_regions():
+    """
+    Get a list of available AWS regions.
+    """
+    try:
+        print('get_regions')
+        ec2_client = boto3.client('ec2', region_name='us-east-1')
+        response = ec2_client.describe_regions()
+        regions = [region['RegionName'] for region in response['Regions']]
+        print('regions', len(regions))
+        return json.dumps({"regions": regions})
+    except Exception as e:
+        print('error', e)
+        return json.dumps({"error": str(e)})
+
+@tool
 def get_instance_pricing(instance_type: str = 'm6g', region: str = "us-east-1", operatingSystem: str = "Linux"):
     """
     Get pricing information for a specific EC2 instance type.
@@ -230,6 +246,7 @@ agent = Agent(
 3. get_instance_pricing - 获取EC2按需和预留实例类型的价格信息
 4. get_services - 获取可用AWS服务列表
 5. get_service_pricing - 获取特定服务的价格信息
+6. get_regions - 获取目前已经支持的region列表，请确保调用这个工具，获取最新的区域信息。
 
 请提供准确的AWS价格信息，并解释价格结构、可用区域和服务特性。
 请以中文回答，并在需要时提供相关文档链接。

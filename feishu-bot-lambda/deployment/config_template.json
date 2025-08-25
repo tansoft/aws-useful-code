@@ -1,0 +1,11 @@
+{
+  "ProjectName": "feishu-bot",
+  "Environment": "dev",
+  "FeishuAppId": "your_feishu_app_id_here",
+  "FeishuAppSecret": "your_feishu_app_secret_here",
+  "FeishuVerificationToken": "your_feishu_verification_token_here",
+  "FeishuEncryptKey": "your_feishu_encrypt_key_here",
+  "FeishuBotName": "FeishuBot",
+  "FeishuAlertChatIds": "chat_id_1,chat_id_2",
+  "LogLevel": "INFO"
+}

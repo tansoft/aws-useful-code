@@ -1,0 +1,314 @@
+# CloudWatch告警配置
+# 定义系统关键指标的告警规则
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: feishu-bot
+  Environment:
+    Type: String
+    Default: dev
+  AlertTopicArn:
+    Type: String
+    Description: SNS主题ARN，用于发送告警通知
+
+Resources:
+  # Lambda函数错误率告警
+  ReceiveLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-receive-lambda-error-rate'
+      AlarmDescription: '接收Lambda函数错误率过高'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${ProjectName}-${Environment}-receive'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  ProcessLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-process-lambda-error-rate'
+      AlarmDescription: '处理Lambda函数错误率过高'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${ProjectName}-${Environment}-process'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  MonitorLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-monitor-lambda-error-rate'
+      AlarmDescription: '监控Lambda函数错误率过高'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${ProjectName}-${Environment}-monitor'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # Lambda函数持续时间告警
+  ReceiveLambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-receive-lambda-duration'
+      AlarmDescription: '接收Lambda函数执行时间过长'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 25000  # 25秒
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${ProjectName}-${Environment}-receive'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  ProcessLambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-process-lambda-duration'
+      AlarmDescription: '处理Lambda函数执行时间过长'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 250000  # 250秒
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${ProjectName}-${Environment}-process'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # Lambda函数节流告警
+  LambdaThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-throttles'
+      AlarmDescription: 'Lambda函数被节流'
+      MetricName: Throttles
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # SQS队列深度告警
+  MessageQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-message-queue-depth'
+      AlarmDescription: 'SQS消息队列积压过多'
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub '${ProjectName}-${Environment}-messages'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # SQS死信队列告警
+  DeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-dead-letter-queue'
+      AlarmDescription: '死信队列中有消息'
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub '${ProjectName}-${Environment}-messages-dlq'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # API Gateway错误率告警
+  ApiGateway4xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-api-4xx-errors'
+      AlarmDescription: 'API Gateway 4xx错误率过高'
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub '${ProjectName}-${Environment}-api'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  ApiGateway5xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-api-5xx-errors'
+      AlarmDescription: 'API Gateway 5xx错误率过高'
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub '${ProjectName}-${Environment}-api'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # API Gateway延迟告警
+  ApiGatewayLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-api-latency'
+      AlarmDescription: 'API Gateway响应延迟过高'
+      MetricName: Latency
+      Namespace: AWS/ApiGateway
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 5000  # 5秒
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub '${ProjectName}-${Environment}-api'
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  # 自定义指标告警
+  MessageProcessingErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-message-processing-error-rate'
+      AlarmDescription: '消息处理错误率过高'
+      MetricName: message.processed
+      Namespace: FeishuBot
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: status
+          Value: error
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  FeishuApiErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-feishu-api-error-rate'
+      AlarmDescription: '飞书API调用错误率过高'
+      MetricName: api.requests
+      Namespace: FeishuBot
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: status_class
+          Value: 5xx
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: notBreaching
+
+  SystemHealthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-system-health'
+      AlarmDescription: '系统健康状态异常'
+      MetricName: system.health
+      Namespace: FeishuBot
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0.5
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref AlertTopicArn
+      TreatMissingData: breaching
+
+  # 复合告警 - 系统整体健康
+  SystemOverallHealthAlarm:
+    Type: AWS::CloudWatch::CompositeAlarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-system-overall-health'
+      AlarmDescription: '系统整体健康状态告警'
+      AlarmRule: !Sub |
+        ALARM(${ReceiveLambdaErrorAlarm}) OR
+        ALARM(${ProcessLambdaErrorAlarm}) OR
+        ALARM(${MessageQueueDepthAlarm}) OR
+        ALARM(${DeadLetterQueueAlarm}) OR
+        ALARM(${SystemHealthAlarm})
+      AlarmActions:
+        - !Ref AlertTopicArn
+
+Outputs:
+  AlarmNames:
+    Description: '创建的告警名称列表'
+    Value: !Join
+      - ','
+      - - !Ref ReceiveLambdaErrorAlarm
+        - !Ref ProcessLambdaErrorAlarm
+        - !Ref MonitorLambdaErrorAlarm
+        - !Ref MessageQueueDepthAlarm
+        - !Ref DeadLetterQueueAlarm
+        - !Ref ApiGateway4xxErrorAlarm
+        - !Ref ApiGateway5xxErrorAlarm
+        - !Ref MessageProcessingErrorRateAlarm
+        - !Ref FeishuApiErrorRateAlarm
+        - !Ref SystemHealthAlarm
+        - !Ref SystemOverallHealthAlarm

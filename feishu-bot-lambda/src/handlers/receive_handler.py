@@ -1,0 +1,1 @@
+# Placeholder for receive handler Lambda function
