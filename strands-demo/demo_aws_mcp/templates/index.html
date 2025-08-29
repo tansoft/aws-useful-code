@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS助手</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            overflow-y: hidden; /* Prevent double scrollbar */
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        .chat-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: #232f3e;
+            color: white;
+            padding: 15px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .aws-logo {
+            height: 30px;
+            margin-right: 10px;
+        }
+
+        .chat-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+        }
+
+        .message-content {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 10px;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .user-message .message-content {
+            background-color: #007bff;
+            color: white;
+            border-top-right-radius: 0;
+        }
+
+        .bot-message {
+            justify-content: flex-start;
+        }
+
+        .bot-message .message-content {
+            background-color: #f1f0f0;
+            color: black;
+            border-top-left-radius: 0;
+        }
+
+        .bot-message img {
+            max-width: 100%;
+            border-radius: 5px;
+        }
+
+        .chat-input {
+            padding: 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .chat-input textarea {
+            resize: none;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .loading-dots {
+            display: flex;
+        }
+
+        .loading-dots div {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #6c757d;
+            margin: 0 3px;
+            animation: bounce 1.2s infinite ease-in-out;
+        }
+
+        .loading-dots div:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .loading-dots div:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-dots div:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+                opacity: 0.3;
+            }
+
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .markdown-content table {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+
+        .markdown-content th,
+        .markdown-content td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .markdown-content th {
+            background-color: #f2f2f2;
+        }
+
+        .markdown-content code {
+            background-color: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: #e83e8c;
+        }
+
+        .markdown-content pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        /* Streaming styles */
+        .streaming-status {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar {
+            background-color: #007bff;
+            height: 4px;
+            border-radius: 2px;
+            margin: 5px 0 10px 0;
+            transition: width 0.3s ease;
+        }
+
+        .partial-result {
+            border-left: 3px solid #007bff;
+            padding-left: 10px;
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        /* Session management styles */
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .session-item.active {
+            border-left-color: #007bff;
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+        
+        .session-item:hover:not(.active) {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-3 mb-3">
+        <div class="chat-container">            
+            <!-- Session Management Modal -->
+            <div class="modal fade" id="sessionModal" tabindex="-1" aria-labelledby="sessionModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="sessionModalLabel">会话管理</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="d-flex justify-content-between mb-3">
+                                <button id="createSessionBtn" class="btn btn-primary btn-sm">新建会话</button>
+                                <button id="refreshSessionsBtn" class="btn btn-outline-secondary btn-sm">刷新列表</button>
+                            </div>
+                            <div id="sessionsContainer" class="list-group">
+                                <!-- Sessions will be loaded here -->
+                                <div class="text-center p-3 text-muted">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-header">
+                <div class="d-flex justify-content-between w-100 align-items-center">
+                    <div class="d-flex align-items-center">
+                <img src="https://d1.awsstatic.com/logos/aws-logo-lockups/poweredbyaws/PB_AWS_logo_RGB_stacked_REV_SQ.91cd4af40773cbfbd15577a3c2b8a346fe3e8fa2.png"
+                    alt="AWS Logo" class="aws-logo">
+                <h5 class="mb-0">AWS助手</h5>
+                    </div>
+                    <div>
+                        <button id="sessionManagerBtn" class="btn btn-sm btn-outline-light" title="管理会话">
+                            <i class="bi bi-chat-left-text"></i> 会话
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-body" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-content markdown-content">
+                        <p>你好，我是AWS助手！👋 </p>
+                        <p>例如，EC2的带宽是多少？</p>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-input">
+                <div class="input-group">
+                    <textarea id="userInput" class="form-control" placeholder="输入你的问题..." rows="2"></textarea>
+                    <button id="sendButton" class="btn btn-primary">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const chatMessages = document.getElementById('chatMessages');
+            const userInput = document.getElementById('userInput');
+            const sendButton = document.getElementById('sendButton');
+            const sessionManagerBtn = document.getElementById('sessionManagerBtn');
+            const createSessionBtn = document.getElementById('createSessionBtn');
+            const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
+            const sessionsContainer = document.getElementById('sessionsContainer');
+            
+            // Session management
+            let currentSessionId = localStorage.getItem('currentSessionId') || null;
+            let sessions = [];
+            let chatHistory = {}; // 存储各个会话的对话历史
+            
+            // 初始化会话模态框
+            const sessionModal = new bootstrap.Modal(document.getElementById('sessionModal'));
+            
+            // 从 localStorage 加载会话数据
+            function loadSessionsFromLocalStorage() {
+                try {
+                    // 加载会话列表
+                    const savedSessions = localStorage.getItem('sessions');
+                    if (savedSessions) {
+                        sessions = JSON.parse(savedSessions);
+                    }
+                    
+                    // 加载各个会话的聊天历史
+                    const savedChatHistory = localStorage.getItem('chatHistory');
+                    if (savedChatHistory) {
+                        chatHistory = JSON.parse(savedChatHistory);
+                    }
+                    
+                    // 渲染会话列表
+                    renderSessions();
+                    
+                    // 如果有当前会话，加载其内容
+                    if (currentSessionId && chatHistory[currentSessionId]) {
+                        loadSessionChat(currentSessionId);
+                    }
+                } catch (error) {
+                    console.error('Error loading sessions from localStorage:', error);
+                }
+            }
+            
+            // 保存会话数据到 localStorage
+            function saveSessionsToLocalStorage() {
+                try {
+                    localStorage.setItem('sessions', JSON.stringify(sessions));
+                    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+                } catch (error) {
+                    console.error('Error saving sessions to localStorage:', error);
+                }
+            }
+            
+            // 初始化加载会话
+            loadSessionsFromLocalStorage();
+
+            function addUserMessage(text) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user-message';
+                messageDiv.innerHTML = `
+                    <div class="message-content">
+                        ${text}
+                    </div>
+                `;
+                chatMessages.appendChild(messageDiv);
+                scrollToBottom();
+            }
+
+            function addBotMessage(text, id = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message bot-message';
+                if (id) {
+                    messageDiv.id = id;
+                }
+                messageDiv.innerHTML = `
+                    <div class="message-content markdown-content">
+                        ${marked.parse(text)}
+                    </div>
+                `;
+                chatMessages.appendChild(messageDiv);
+                scrollToBottom();
+                return messageDiv;
+            }
+
+            function addLoadingIndicator() {
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'loading bot-message';
+                loadingDiv.id = 'loadingIndicator';
+                loadingDiv.innerHTML = `
+                    <div class="message-content">
+                        <div class="loading-dots">
+                            <div></div>
+                            <div></div>
+                            <div></div>
+                        </div>
+                    </div>
+                `;
+                chatMessages.appendChild(loadingDiv);
+                scrollToBottom();
+            }
+
+            function removeLoadingIndicator() {
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                if (loadingIndicator) {
+                    loadingIndicator.remove();
+                }
+            }
+
+            function scrollToBottom() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            // 将对话内容保存到指定会话的历史记录中
+            function saveChatToHistory() {
+                if (!currentSessionId) return;
+                
+                // 获取当前聊天消息
+                const messages = [];
+                document.querySelectorAll('.message').forEach(msg => {
+                    const isUser = msg.classList.contains('user-message');
+                    const content = msg.querySelector('.message-content').innerHTML;
+                    messages.push({
+                        role: isUser ? 'user' : 'assistant',
+                        content: content,
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                
+                // 保存到会话历史
+                chatHistory[currentSessionId] = messages;
+                
+                // 保存到 localStorage
+                saveSessionsToLocalStorage();
+            }
+            
+            // 加载指定会话的聊天记录
+            function loadSessionChat(sessionId) {
+                if (!sessionId || !chatHistory[sessionId]) {
+                    // 新会话或没有历史记录，显示默认欢迎消息
+                    chatMessages.innerHTML = '';
+                    addBotMessage('<p>你好，我是AWS助手！👋 </p><p>例如，EC2的带宽是多少？</p>');
+                    return;
+                }
+                
+                // 清空当前聊天区域
+                chatMessages.innerHTML = '';
+                
+                // 加载历史消息
+                const messages = chatHistory[sessionId];
+                messages.forEach(msg => {
+                    if (msg.role === 'user') {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'message user-message';
+                        messageDiv.innerHTML = `
+                            <div class="message-content">
+                                ${msg.content}
+                            </div>
+                        `;
+                        chatMessages.appendChild(messageDiv);
+                    } else {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'message bot-message';
+                        messageDiv.innerHTML = `
+                            <div class="message-content markdown-content">
+                                ${msg.content}
+                            </div>
+                        `;
+                        chatMessages.appendChild(messageDiv);
+                    }
+                });
+                
+                // 滚动到底部
+                scrollToBottom();
+            }
+            
+            // 渲染会话列表到模态框
+            function renderSessions() {
+                if (sessions.length === 0) {
+                    sessionsContainer.innerHTML = `<div class="text-center p-3 text-muted">没有可用的会话，点击“新建会话”按钮创建一个新的会话。</div>`;
+                    return;
+                }
+                
+                let html = '';
+                sessions.forEach(session => {
+                    const isActive = session.id === currentSessionId;
+                    const date = session.created_at ? new Date(session.created_at).toLocaleString() : '无时间信息';
+                    const title = session.title || `会话 ${session.id.substring(0, 8)}...`;
+                    
+                    html += `
+                    <div class="list-group-item session-item ${isActive ? 'active' : ''}" data-session-id="${session.id}">
+                        <div>
+                            <div>${title}</div>
+                            <small class="text-muted">${date}</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger delete-session-btn" data-session-id="${session.id}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    `;
+                });
+                
+                sessionsContainer.innerHTML = html;
+                
+                // 为会话项添加事件监听
+                document.querySelectorAll('.session-item').forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        if (!e.target.closest('.delete-session-btn')) {
+                            selectSession(this.dataset.sessionId);
+                        }
+                    });
+                });
+                
+                // 为删除按钮添加事件监听
+                document.querySelectorAll('.delete-session-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        deleteSession(this.dataset.sessionId);
+                    });
+                });
+            }
+            
+            // 生成UUID
+            function generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+            
+            // 创建一个新会话
+            function createSession() {
+                // 生成新的会话 ID
+                const sessionId = generateUUID();
+                const newSession = {
+                    id: sessionId,
+                    title: `会话 ${new Date().toLocaleDateString()}`,
+                    created_at: new Date().toISOString()
+                };
+                
+                // 添加到会话列表
+                sessions.push(newSession);
+                
+                // 初始化会话历史
+                chatHistory[sessionId] = [];
+                
+                // 保存到 localStorage
+                saveSessionsToLocalStorage();
+                
+                // 设置为当前会话
+                currentSessionId = sessionId;
+                localStorage.setItem('currentSessionId', sessionId);
+                
+                // 清空聊天消息
+                chatMessages.innerHTML = '';
+                addBotMessage('<p>你好，我是AWS助手！👋 </p><p>例如，EC2的带宽是多少？</p>');
+                
+                // 将初始消息保存到会话历史
+                saveChatToHistory();
+                
+                // 关闭模态框
+                sessionModal.hide();
+                
+                // 更新会话列表
+                renderSessions();
+            }
+            
+            // 选择会话
+            function selectSession(sessionId) {
+                // 如果是当前会话，则不做切换
+                if (sessionId === currentSessionId) {
+                    sessionModal.hide();
+                    return;
+                }
+                
+                // 保存当前会话的聊天历史
+                if (currentSessionId) {
+                    saveChatToHistory();
+                }
+                
+                // 更新当前会话 ID
+                currentSessionId = sessionId;
+                localStorage.setItem('currentSessionId', sessionId);
+                
+                // 加载选中会话的聊天记录
+                loadSessionChat(sessionId);
+                
+                // 关闭模态框
+                sessionModal.hide();
+                
+                // 更新会话列表（高亮当前选中项）
+                renderSessions();
+            }
+            
+            // 删除会话
+            function deleteSession(sessionId) {
+                if (!confirm(`确定要删除此会话吗？此操作无法撤销。`)) {
+                    return;
+                }
+                
+                // 从会话列表中删除
+                sessions = sessions.filter(session => session.id !== sessionId);
+                
+                // 从会话历史中删除
+                if (chatHistory[sessionId]) {
+                    delete chatHistory[sessionId];
+                }
+                
+                // 保存更新到 localStorage
+                saveSessionsToLocalStorage();
+                
+                // 如果删除的是当前会话，创建一个新的
+                if (sessionId === currentSessionId) {
+                    // 如果还有其他会话，选择第一个
+                    if (sessions.length > 0) {
+                        selectSession(sessions[0].id);
+                    } else {
+                        // 否则创建新的
+                        currentSessionId = null;
+                        localStorage.removeItem('currentSessionId');
+                        createSession();
+                    }
+                } else {
+                    // 仅更新会话列表
+                    renderSessions();
+                }
+            }
+            
+            // 会话管理按钮事件监听
+            sessionManagerBtn.addEventListener('click', function() {
+                sessionModal.show();
+                renderSessions(); // 显示会话列表
+            });
+            
+            createSessionBtn.addEventListener('click', createSession);
+            
+            refreshSessionsBtn.addEventListener('click', function() {
+                // 刷新会话列表
+                renderSessions();
+            });
+            
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (message === '') return;
+
+                addUserMessage(message);
+                userInput.value = '';
+                
+                // 保存该消息到会话历史
+                if (currentSessionId) {
+                    saveChatToHistory();
+                }
+
+                // Create a streaming response container
+                const streamingMsgId = 'streaming-response-' + Date.now();
+                const responseDiv = addBotMessage('<div class="streaming-status">思考中...</div>', streamingMsgId);
+                const streamingContent = responseDiv.querySelector('.markdown-content');
+
+                // Track the response building process
+                let finalResponse = '';
+                let currentStep = '';
+
+                // Use fetch with streaming to get the response
+                fetch('/api/chat_stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        message: message,
+                        session_id: currentSessionId
+                    })
+                })
+                    .then(response => {
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+
+                        function readStream() {
+                            return reader.read().then(({ done, value }) => {
+                                if (done) {
+                                    return;
+                                }
+
+                                const chunk = decoder.decode(value);
+                                const lines = chunk.split('\n\n');
+
+                                for (const line of lines) {
+                                    if (line.startsWith('data: ')) {
+                                        try {
+                                            const data = JSON.parse(line.substring(6));
+                                            processStreamingData(data, streamingContent);
+
+                                            // Save final response if received
+                                            if (data.type === 'response') {
+                                                finalResponse = data.content;
+                                            }
+                                            
+                                            // 处理会话创建
+                                            if (data.type === 'session_created') {
+                                                const sessionId = data.session_id;
+                                                
+                                                // 如果是新会话，添加到列表中
+                                                if (!sessions.some(s => s.id === sessionId)) {
+                                                    const newSession = {
+                                                        id: sessionId,
+                                                        title: `会话 ${new Date().toLocaleDateString()}`,
+                                                        created_at: new Date().toISOString()
+                                                    };
+                                                    sessions.push(newSession);
+                                                }
+                                                
+                                                // 初始化会话历史
+                                                if (!chatHistory[sessionId]) {
+                                                    chatHistory[sessionId] = [];
+                                                }
+                                                
+                                                currentSessionId = sessionId;
+                                                localStorage.setItem('currentSessionId', currentSessionId);
+                                                console.log('New session created:', currentSessionId);
+                                                
+                                                // 保存到本地存储
+                                                saveSessionsToLocalStorage();
+                                            }
+                                            
+                                            // 收到完整响应后保存到会话历史
+                                            if (data.type === 'complete' && currentSessionId) {
+                                                saveChatToHistory();
+                                            }
+                                        } catch (e) {
+                                            console.error('Error parsing streaming data:', e, line.substring(6));
+                                        }
+                                    }
+                                }
+
+                                return readStream();
+                            });
+                        }
+
+                        return readStream();
+                    })
+                    .catch(error => {
+                        streamingContent.innerHTML = '<div class="error">抱歉，连接服务器时出现了错误。请检查您的网络连接。</div>';
+                        console.error('Error:', error);
+                    });
+            }
+
+            sendButton.addEventListener('click', sendMessage);
+
+            userInput.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            function processStreamingData(data, contentElement) {
+                switch (data.type) {
+                    case 'connected':
+                        contentElement.innerHTML = `<div class="streaming-status">${data.message}</div>`;
+                        break;
+
+                    case 'step':
+                    case 'progress':
+                        const progressBar = `<div class="progress-bar" style="height: 4px; background-color: #007bff; width: ${data.progress}%; margin: 5px 0;"></div>`;
+                        contentElement.innerHTML = `<div class="streaming-status">${data.message}</div>${progressBar}`;
+                        break;
+
+                    case 'partial':
+                        // Handle streaming deltas
+                        // Check if we already have a streaming container
+                        let streamContainer = contentElement.querySelector('.streaming-container');
+
+                        if (!streamContainer) {
+                            // First partial response, create container
+                            streamContainer = document.createElement('div');
+                            streamContainer.className = 'streaming-container';
+                            contentElement.innerHTML = ''; // Clear any previous status/progress
+                            contentElement.appendChild(streamContainer);
+                        }
+
+                        // Append the new content
+                        streamContainer.innerHTML += data.content;
+                        break;
+
+                    case 'response':
+                        // Show the response with markdown parsing
+                        // If it's a final response after partials, replace everything
+                        contentElement.innerHTML = marked.parse(data.content);
+                        break;
+
+                    case 'complete':
+                        // Response is fully complete
+                        // Convert any remaining streaming content to proper markdown
+                        const streamingContainer = contentElement.querySelector('.streaming-container');
+                        if (streamingContainer) {
+                            contentElement.innerHTML = marked.parse(streamingContainer.innerHTML);
+                        }
+                        break;
+
+                    case 'error':
+                        contentElement.innerHTML = `<div class="error">错误: ${data.error}</div>`;
+                        break;
+                }
+
+                scrollToBottom();
+            }
+
+            userInput.focus();
+        });
+    </script>
+</body>
+
+</html>
