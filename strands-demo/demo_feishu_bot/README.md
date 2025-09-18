@@ -10,10 +10,16 @@ cp env.example .env
 # 进行实际配置
 # vi .env
 # 配置本机redis
+## Amazon Linux
 sudo su
 dnf install -y redis6
 systemctl start redis6
 systemctl enable redis6
+## ubuntu
+sudo su
+apt-get install redis-server
+systemctl start redis-server
+systemctl enable redis-server
 # 启动服务
 pip install -r requirements.txt
 python server.py

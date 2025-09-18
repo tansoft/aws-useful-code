@@ -11,12 +11,13 @@ from asgiref.wsgi import WsgiToAsgi
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, jsonify
 from lark_oapi.adapter.flask import *
+from bedrock import async_bedrock_sendMessage
 
 import SparkApi
-from api import reply_message, get_current_time, send_privacy_card_message
+from api import reply_message, get_current_time, send_privacy_card_message, updateTextCard
 from cardBuild import help_card_build, build_card
 from event import MessageReceiveEvent, UrlVerificationEvent, EventManager, MemberDeletedReceiveEvent, \
-    MemberAddedReceiveEvent, MessageReadEvent
+    MemberAddedReceiveEvent, DefaultEvent
 from exts import cache
 from model import Card, AppCache
 from serverPiluin import message_handle_process, do_interactive_card
@@ -39,7 +40,6 @@ async def async_iFlytek_sendMessage(app_id: str, message_id: str, user_id: str, 
     print(user_id)
     print(message)
     SparkApi.sendMessage(app_id, message_id, user_id, message)
-
 
 # 异步处理用户进群事件
 async def async_member_added_event_handler(req_data: MemberAddedReceiveEvent):
@@ -67,8 +67,9 @@ def member_added_receive_event_handler(req_data: MemberAddedReceiveEvent):
 def member_deleted_receive_event_handler(req_data: MemberDeletedReceiveEvent):
     return jsonify()
 
-@event_manager.register("im.message.message_read_v1")
-def message_read_event_handler(req_data: MessageReadEvent):
+@event_manager.register("default_event")
+def default_event_handler(req_data: DefaultEvent):
+    print('default event handler for:', req_data.event_type)
     return jsonify()
 
 @event_manager.register("im.message.receive_v1")
@@ -121,13 +122,10 @@ def message_receive_event_handler(req_data: MessageReceiveEvent):
                     text_content = data["text"]
 
             # 异步调用大模型实现打字机问答功能
-            print(app_id)
-            print(message_boy.data.message_id)
-            print(user_id)
             if user_id is None:
                 user_id = "1"
             asyncio.create_task(
-                async_iFlytek_sendMessage(app_id, message_boy.data.message_id, user_id,
+                async_bedrock_sendMessage(app_id, message_boy.data.message_id, user_id,
                                           text_content))
         return jsonify()
     else:
@@ -156,7 +154,6 @@ async def callback_event_handlerv2(appid):
                         "timestamp": int(time.time() * 1000)})
     appCache = AppCache(appCacheJson)
     event_handler, event = event_manager.get_handler_with_event(appCache.verification_token, appCache.encrypt_key)
-    print(event_handler)
     return event_handler(event)
 
 
@@ -184,7 +181,6 @@ async def cardv2(appid):
         return jsonify({"challenge": dict_data.get("challenge")})
 
     data = Card(dict_data)
-
     if cache.get(":card_event:" + data.open_message_id) is None:
         resp = do_interactive_card(data)
         return resp
@@ -212,5 +208,7 @@ if __name__ == "__main__":
         .robot_temperature(1) \
         .build()
     cache.set(":robot_app_key:" + key.appid, key.to_dict())
+    cache.set(":robot_user_model:1", key.to_dict())
+
     print(cache.get(":robot_app_key:" + key.appid))
     app.run(host="0.0.0.0", port=9000, debug=False)

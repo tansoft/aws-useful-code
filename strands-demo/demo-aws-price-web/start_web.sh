@@ -34,7 +34,10 @@ pip install --upgrade -r requirements.txt
 # Run the application
 echo "Starting AWS Price Web Assistant..."
 echo "Access the application at http://localhost:8000"
-python demo_aws_price_web.py
+
+while [ true ]; do
+	python demo_aws_price_web.py
+done
 
 # Deactivate virtual environment when done
 deactivate

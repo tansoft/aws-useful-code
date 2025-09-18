@@ -44,25 +44,21 @@ class Event(object):
 
 
 class MemberDeletedReceiveEvent(Event):
-
     @staticmethod
     def event_type():
         return "im.chat.member.user.deleted_v1"
 
 
 class MemberAddedReceiveEvent(Event):
-
     @staticmethod
     def event_type():
         return "im.chat.member.user.added_v1"
 
 
 class MessageReceiveEvent(Event):
-
     @staticmethod
     def event_type():
         return "im.message.receive_v1"
-
 
 class UrlVerificationEvent(Event):
 
@@ -74,16 +70,18 @@ class UrlVerificationEvent(Event):
     def event_type():
         return "url_verification"
 
-class MessageReadEvent(Event):
+class DefaultEvent(Event):
+    def __init__(self, event_type):
+        self.event_type = event_type
+
     @staticmethod
     def event_type():
-        return "im.message.message_read_v1"
-
+        return "default_event"
 
 class EventManager(object):
     event_callback_map = dict()
     event_type_map = dict()
-    _event_list = [MessageReceiveEvent, UrlVerificationEvent, MemberAddedReceiveEvent, MemberDeletedReceiveEvent, MessageReadEvent]
+    _event_list = [MessageReceiveEvent, UrlVerificationEvent, MemberAddedReceiveEvent, MemberDeletedReceiveEvent, DefaultEvent]
 
     def __init__(self):
         for event in EventManager._event_list:
@@ -104,10 +102,10 @@ class EventManager(object):
     def get_handler_with_event(token, encrypt_key):
         dict_data = json.loads(request.data)
         dict_data = EventManager._decrypt_data(encrypt_key, dict_data)
+        print('event:', dict_data)
 
-        callback_type = dict_data.get("type")
         # only verification data has callback_type, else is event
-        if callback_type == "url_verification":
+        if dict_data.get("type") == "url_verification":
             event = UrlVerificationEvent(dict_data)
             return EventManager.event_callback_map.get(event.event_type()), event
 
@@ -117,10 +115,14 @@ class EventManager(object):
             raise InvalidEventException("request is not callback event(v2)")
         # get event_type
         event_type = dict_data.get("header").get("event_type")
-        print(event_type)
         # build event
-        event = EventManager.event_type_map.get(event_type)(dict_data, token, encrypt_key)
-        # get handler
+        eventjob = EventManager.event_type_map.get(event_type)
+        if eventjob is None:
+            event = DefaultEvent(event_type)
+            event_type = "default_event"
+        else:
+            event = eventjob(dict_data, token, encrypt_key)
+       # get handler
         return EventManager.event_callback_map.get(event_type), event
 
     @staticmethod

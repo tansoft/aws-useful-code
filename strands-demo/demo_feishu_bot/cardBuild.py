@@ -474,6 +474,8 @@ def robot_reminder_card_build(header: str, content: str, note: str) -> str:
 # 根据user_id获取robot_user_model
 def get_robot_user_model(user_id: str) -> AppCache:
     print(user_id)
+    if user_id is None:
+        user_id = "1"
     robot_user_model_json = cache.get(":robot_user_model:" + user_id)
     print(robot_user_model_json)
     if robot_user_model_json is None:
