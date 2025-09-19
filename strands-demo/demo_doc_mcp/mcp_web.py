@@ -1,4 +1,3 @@
-import logging
 import json
 import uvicorn
 import os
@@ -16,42 +15,30 @@ from strands_tools import http_request, current_time
 from strands.tools.mcp import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
 from contextlib import asynccontextmanager
+from strands.agent.conversation_manager import SummarizingConversationManager
 from typing import Optional
+import logging
 
-# Set up logging
-logging.getLogger("strands").setLevel(logging.INFO)  # Change to INFO to see more details
-logging.basicConfig(
-    level=logging.INFO,  # Set to INFO level
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    handlers=[logging.StreamHandler()]
-)
+# Configure logging
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logging.getLogger("strands").setLevel(logging.WARNING)
 
-# Session storage directory
-SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+# Initialize session directory
+SESSION_DIR = os.path.join(os.path.dirname(__file__), "sessions")
 os.makedirs(SESSION_DIR, exist_ok=True)
 
-# Setup lifespan context manager for proper startup/shutdown of resources
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup - clients are already initialized in the module scope
-    logging.info("Application startup")
     yield
-    # Shutdown - clean up resources
-    logging.info("Shutting down MCP clients")
     aws_doc_client.stop(None, None, None)
-    logging.info("MCP clients shut down successfully")
 
 app = FastAPI(lifespan=lifespan)
 
-# Token for authentication
 VALID_TOKEN = "secret_token"
 
-# Token validation dependency
 def validate_token(request: Request):
-    token = request.query_params.get('token')
-    if not token or token != VALID_TOKEN:
+    if request.query_params.get('token') != VALID_TOKEN:
         raise HTTPException(status_code=403)
-    return True
 
 class ImageData(BaseModel):
     data: str  # Base64 encoded image data
@@ -62,19 +49,9 @@ class PromptRequest(BaseModel):
     session_id: Optional[str] = None
     image: Optional[ImageData] = None
 
-# Initialize Bedrock model
-bedrock_model = BedrockModel(
-    model_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    region_name="us-west-2",
-    params={"temperature": 0.1}
-)
-
-# Initialize MCP client with streamable HTTP transport
-aws_doc_transport = lambda: streamablehttp_client(url="https://knowledge-mcp.global.api.aws")
-
-aws_doc_client = MCPClient(aws_doc_transport)
-
-# Start the clients immediately when the app starts
+# Initialize components
+bedrock_model = BedrockModel(model_id="apac.anthropic.claude-sonnet-4-20250514-v1:0", region_name="ap-northeast-1")
+aws_doc_client = MCPClient(lambda: streamablehttp_client(url="https://knowledge-mcp.global.api.aws"))
 aws_doc_client.start()
 
 templates = Jinja2Templates(directory="templates")
@@ -82,114 +59,101 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def read_root(request: Request):
-    # Validate token for root endpoint
     validate_token(request)
-    # 注意：必须传递request参数
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/api/chat_stream")
 async def stream_response(request: PromptRequest, raw_request: Request):
-    # Validate token for chat stream endpoint
     validate_token(raw_request)
+
     async def generate():
         try:
-            # Check if clients are still active, if not restart them
             if not aws_doc_client._is_session_active():
-                logging.warning("AWS DOC client not active, restarting...")
                 aws_doc_client.start()
-                
-            # Get fresh tools list after potential restart
+
             current_tools = aws_doc_client.list_tools_sync() + [http_request, current_time]
 
-            # Handle session management
-            session_id = request.session_id
-            if not session_id:
-                # Create a new session if none provided
-                session_id = str(uuid.uuid4())
+            session_id = request.session_id or str(uuid.uuid4())
+            if not request.session_id:
                 yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
-            
-            # 为每个请求创建一个新的 SessionManager 实例
-            # FileSessionManager 会自动从磁盘加载已有的会话数据
-            session_manager = FileSessionManager(
-                session_id=session_id,
-                storage_dir=SESSION_DIR
-            )
-            
-            # 为每个请求创建一个新的 Agent 实例
-            # 所有会话数据仍会持久化到磁盘，下次请求会自动加载
+
+            session_manager = FileSessionManager(session_id=session_id, storage_dir=SESSION_DIR)
+            conversation_manager = SummarizingConversationManager(summary_ratio=0.3, preserve_recent_messages=6)
+
             agent = Agent(
                 model=bedrock_model,
-                system_prompt="""你是一个AWS解决方案架构师
-                处理问题的逻辑按以下步骤：
-                1. 需要通过MCP的能力或者搜索互联网的方式以准确回答客户的问题，并给出相应的参考链接以证明其真实性
-                2. 在遇到无法处理的问题时，也可以提出相关建议或者解决方案
-                3. 在调用工具时，告知一下将调用的工具及方法
-                4. 输出的内容使用markdown的格式
-                输出格式如下：
-                ### 总结
-                {简要的总结内容}
-                ### 参考链接
-                {链接}-{链接内容简要说明}
-                ### 更多建议(如有)
-                {建议的内容}
-                ### 补充内容
-                {有可能需要额外了解的内容/或者会被进一步提问的问题}""",
+                callback_handler=None,
+                conversation_manager=conversation_manager,
+                system_prompt="""你是一个AWS解决方案架构师，专业、准确地回答客户的AWS相关问题。
+
+处理原则：
+1. 必须通过MCP工具或搜索互联网获取准确信息
+2. 所有技术结论都必须有权威参考链接支撑
+3. 严禁编造或猜测任何技术信息
+4. 根据问题类型灵活选择回答格式
+
+输出格式：
+### 详细说明
+{针对答案的技术细节，每个关键点都必须包含：}
+- 参考链接：{权威AWS文档链接}
+- 参考内容：{从官方文档中提取的关键信息摘要}
+
+### 直接答案
+{用于直接用来回答的内容，回答的点可能有多个，回答尽可能口语化并且每个回答带上相关的参考链接。参考回答格式：<answer>可以使用xxx的
+  xxx实现xxx功能，适用于xxx场景。xxx的参考链接：https://reference.com/answer.html</answer>}
+
+### 相关建议（如需要）
+{额外的建议或注意事项，同样需要包含参考链接和参考内容}""",
                 tools=current_tools,
                 session_manager=session_manager,
-                agent_id="default"  # 使用固定的 agent_id
+                agent_id="default"
             )
             
-            # Prepare the messages list for agent
             messages = []
-            
-            # Add text message if provided
+
             if request.message.strip():
                 messages.append({"text": request.message})
-            
-            # Add image if provided
+
             if request.image:
                 try:
-                    # Decode base64 image data
                     image_bytes = base64.b64decode(request.image.data)
                     image_format = request.image.format.lower()
-                    
-                    # Validate image format
+
                     if image_format not in ["png", "jpeg"]:
                         raise ValueError(f"Unsupported image format: {image_format}")
-                    
-                    # Add image to messages
+
                     messages.append({
                         "image": {
                             "format": image_format,
-                            "source": {
-                                "bytes": image_bytes
-                            }
+                            "source": {"bytes": image_bytes}
                         }
                     })
                 except Exception as e:
-                    logging.error(f"Error processing image: {str(e)}")
                     yield f"data: {json.dumps({'type': 'error', 'error': f'Error processing image: {str(e)}'})}\n\n"
                     return
             
-            # Process the entire stream
-            alltext = ''
-            
-            # If we have messages, stream the response
-            if messages:
-                async for event in agent.stream_async(messages):
-                    if "data" in event:
-                        alltext += event["data"]
-                        alltext = alltext.replace('<thinking>','***').replace('</thinking>',"***\n\n")
-                        yield f"data: {json.dumps({'type': 'response', 'content': alltext, 'session_id': session_id})}\n\n"
-            else:
-                # If no message content, return an error
+            if not messages:
                 yield f"data: {json.dumps({'type': 'error', 'error': '没有提供消息内容或图片'})}\n\n"
                 return
+
+            last_event_type = None
+            async for event in agent.stream_async(messages):
+                if "data" in event:
+                    content = event['data']
+                    if last_event_type == 'tool':
+                        content = '<br/>\n' + content
+                    yield f"data: {json.dumps({'type': 'response', 'content': content, 'session_id': session_id})}\n\n"
+                    last_event_type = 'data'
+                elif "current_tool_use" in event:
+                    tool_name = event["current_tool_use"].get('name', '未知工具')
+                    yield f"data: {json.dumps({'type': 'status', 'content': f'🔧 {tool_name}', 'session_id': session_id})}\n\n"
+                    last_event_type = 'tool'
+                elif "init_event_loop" in event or "start_event_loop" in event or "message" in event:
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'session_id': session_id})}\n\n"
                 
             yield f"data: {json.dumps({'type': 'complete', 'session_id': session_id})}\n\n"
 
         except Exception as e:
-            logging.error(f"Error in stream_response: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(
@@ -198,18 +162,10 @@ async def stream_response(request: PromptRequest, raw_request: Request):
         headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',  # Disable nginx buffering if using nginx
-            'Keep-Alive': 'timeout=300'  # 增加Keep-Alive超时时间为300秒
+            'X-Accel-Buffering': 'no',
+            'Keep-Alive': 'timeout=300'
         }
     )
 
-
-
 if __name__ == "__main__":
-    # 增加超时时间设置
-    uvicorn.run(
-        app, 
-        host="0.0.0.0", 
-        port=8080,
-        timeout_keep_alive=120,  # 保持连接超时时间（秒）
-    )
+    uvicorn.run(app, host="0.0.0.0", port=9000, timeout_keep_alive=120)

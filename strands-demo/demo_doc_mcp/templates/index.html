@@ -1,38 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AWS解决方案架构师</title>
-    <script>
-        (function(n,i,v,r,s,c,x,z){x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c};window[n]=function(c,p){x.q.push({c:c,p:p});};z=document.createElement('script');z.async=true;z.src=s;document.head.insertBefore(z,document.head.getElementsByTagName('script')[0]);})(
-            'cwr',
-            '795d6927-b5c8-4aca-ace7-ac95b71b7903',
-            '1.0.0',
-            'ap-southeast-1',
-            'https://client.rum.us-east-1.amazonaws.com/1.19.0/cwr.js',
-            {
-            sessionSampleRate: 1 ,
-            endpoint: "https://dataplane.rum.ap-southeast-1.amazonaws.com" ,
-            telemetries: ["performance","errors","http"] ,
-            allowCookies: true ,
-            enableXRay: false ,
-            signing: false // If you have a public resource policy and wish to send unsigned requests please set this to false
-            }
-        );
-    </script>
+    <link rel="icon" type="image/svg+xml" href="./static/favicon.svg">
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="./static/css/styles.css">
 </head>
-
 <body>
-    <script>
-        // No automatic token redirect - token must be provided in URL
-    </script>
     <div class="container mt-3 mb-3">
-        <div class="chat-container">            
+        <div class="chat-container">
             <!-- Session Management Modal -->
             <div class="modal fade" id="sessionModal" tabindex="-1" aria-labelledby="sessionModalLabel" aria-hidden="true">
                 <div class="modal-dialog">
@@ -43,11 +22,10 @@
                         </div>
                         <div class="modal-body">
                             <div class="d-flex justify-content-between mb-3">
-                                <button id="createSessionBtn" class="btn btn-primary btn-sm">新建会话</button>
-                                <button id="refreshSessionsBtn" class="btn btn-outline-secondary btn-sm">刷新列表</button>
+                                <button id="clearAllSessionsBtn" class="btn btn-outline-danger btn-sm">清空会话</button>
+                                <button id="createSessionBtn" class="btn btn-sm" style="background-color: #07C160; border-color: #07C160; color: white;">新建会话</button>
                             </div>
                             <div id="sessionsContainer" class="list-group">
-                                <!-- Sessions will be loaded here -->
                                 <div class="text-center p-3 text-muted">加载中...</div>
                             </div>
                         </div>
@@ -57,12 +35,12 @@
             <div class="chat-header">
                 <div class="d-flex justify-content-between w-100 align-items-center">
                     <div class="d-flex align-items-center">
-                <img src="https://d1.awsstatic.com/logos/aws-logo-lockups/poweredbyaws/PB_AWS_logo_RGB_stacked_REV_SQ.91cd4af40773cbfbd15577a3c2b8a346fe3e8fa2.png"
-                    alt="AWS Logo" class="aws-logo">
-                <h5 class="mb-0">AWS解决方案架构师</h5>
+                        <img src="https://d1.awsstatic.com/logos/aws-logo-lockups/poweredbyaws/PB_AWS_logo_RGB_stacked_REV_SQ.91cd4af40773cbfbd15577a3c2b8a346fe3e8fa2.png"
+                             alt="AWS Logo" class="aws-logo">
+                        <h5 class="mb-0">AWS解决方案架构师</h5>
                     </div>
                     <div>
-                        <button id="sessionManagerBtn" class="btn btn-sm btn-outline-light" title="管理会话">
+                        <button id="sessionManagerBtn" class="btn btn-sm" style="border: 1px solid #666; color: #FFFFFF;" title="管理会话">
                             <i class="bi bi-chat-left-text"></i> 会话
                         </button>
                     </div>
@@ -77,23 +55,27 @@
                 </div>
             </div>
             <div class="chat-input">
-                <div class="input-group mb-2">
-                    <textarea id="userInput" class="form-control" placeholder="输入你的问题..." rows="2"></textarea>
-                    <button id="imageUploadBtn" class="btn btn-outline-secondary" type="button" title="上传图片">
-                        <i class="bi bi-image"></i>
-                    </button>
-                    <button id="sendButton" class="btn btn-primary">
-                        <i class="bi bi-send-fill"></i>
-                    </button>
+                <div class="input-container mb-2">
+                    <div class="textarea-wrapper">
+                        <textarea id="userInput" class="form-control" placeholder="输入你的问题..." rows="2"></textarea>
+                        <div class="input-actions">
+                            <button id="imageUploadBtn" class="btn btn-icon" type="button" title="上传图片">
+                                <i class="bi bi-image"></i>
+                            </button>
+                            <button id="sendButton" class="btn btn-send">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div id="imagePreviewContainer" class="d-none mb-2">
-                    <div class="d-flex align-items-center">
-                        <div class="image-preview me-2" style="max-height: 100px; overflow: hidden;">
-                            <img id="imagePreview" src="" alt="图片预览" style="max-height: 100px; max-width: 200px;">
+                    <div class="image-preview-wrapper">
+                        <div class="image-preview-item">
+                            <img id="imagePreview" src="" alt="图片预览">
+                            <button id="removeImageBtn" class="remove-image-btn">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                         </div>
-                        <button id="removeImageBtn" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
                     </div>
                 </div>
                 <input type="file" id="imageUploadInput" accept="image/png,image/jpeg" style="display: none;">
@@ -103,7 +85,7 @@
 
     <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.2/marked.min.js"></script>
-    <script src="/static/js/chat.js"></script>
+    <script src="./static/js/chat.js"></script>
 </body>
 
 </html>

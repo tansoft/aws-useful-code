@@ -1,50 +1,35 @@
-// 聊天应用主要JavaScript文件
-
 document.addEventListener('DOMContentLoaded', function () {
     const chatMessages = document.getElementById('chatMessages');
     const userInput = document.getElementById('userInput');
     const sendButton = document.getElementById('sendButton');
     const sessionManagerBtn = document.getElementById('sessionManagerBtn');
     const createSessionBtn = document.getElementById('createSessionBtn');
-    const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
+    const clearAllSessionsBtn = document.getElementById('clearAllSessionsBtn');
     const sessionsContainer = document.getElementById('sessionsContainer');
     const imageUploadBtn = document.getElementById('imageUploadBtn');
     const imageUploadInput = document.getElementById('imageUploadInput');
     const imagePreviewContainer = document.getElementById('imagePreviewContainer');
     const imagePreview = document.getElementById('imagePreview');
     const removeImageBtn = document.getElementById('removeImageBtn');
-    
-    // 全局变量，用于存储当前上传的图片数据
+
     let currentImageData = null;
     let currentImageType = null;
-    
-    // Session management
     let currentSessionId = localStorage.getItem('currentSessionId') || null;
     let sessions = [];
-    let chatHistory = {}; // 存储各个会话的对话历史
-    
-    // 初始化会话模态框
+    let chatHistory = {};
+
     const sessionModal = new bootstrap.Modal(document.getElementById('sessionModal'));
     
-    // 从 localStorage 加载会话数据
     function loadSessionsFromLocalStorage() {
         try {
-            // 加载会话列表
             const savedSessions = localStorage.getItem('sessions');
-            if (savedSessions) {
-                sessions = JSON.parse(savedSessions);
-            }
-            
-            // 加载各个会话的聊天历史
+            if (savedSessions) sessions = JSON.parse(savedSessions);
+
             const savedChatHistory = localStorage.getItem('chatHistory');
-            if (savedChatHistory) {
-                chatHistory = JSON.parse(savedChatHistory);
-            }
-            
-            // 渲染会话列表
+            if (savedChatHistory) chatHistory = JSON.parse(savedChatHistory);
+
             renderSessions();
-            
-            // 如果有当前会话，加载其内容
+
             if (currentSessionId && chatHistory[currentSessionId]) {
                 loadSessionChat(currentSessionId);
             }
@@ -53,7 +38,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
     
-    // 保存会话数据到 localStorage
     function saveSessionsToLocalStorage() {
         try {
             localStorage.setItem('sessions', JSON.stringify(sessions));
@@ -63,37 +47,135 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
     
-    // 初始化加载会话
     loadSessionsFromLocalStorage();
-
-    // 添加用户消息到聊天界面
     function addUserMessage(text) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message user-message';
         messageDiv.innerHTML = `
             <div class="message-content">
                 ${text}
+                <button class="copy-message-btn" title="复制并重新输入" data-message="${text.replace(/"/g, '&quot;')}">
+                    ⧉
+                </button>
             </div>
         `;
         chatMessages.appendChild(messageDiv);
         scrollToBottom();
+
+        const copyBtn = messageDiv.querySelector('.copy-message-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                copyUserMessage(this.dataset.message);
+            });
+        }
     }
 
-    // 添加机器人消息到聊天界面
     function addBotMessage(text, id = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message bot-message';
-        if (id) {
-            messageDiv.id = id;
-        }
-        messageDiv.innerHTML = `
-            <div class="message-content markdown-content">
-                ${marked.parse(text)}
-            </div>
-        `;
+        if (id) messageDiv.id = id;
+
+        const processedText = processAnswerTags(text);
+        messageDiv.innerHTML = `<div class="message-content markdown-content">${marked.parse(processedText)}</div>`;
         chatMessages.appendChild(messageDiv);
+
+        addCopyFunctionalityToAnswerBlocks(messageDiv);
         scrollToBottom();
         return messageDiv;
+    }
+
+    function processAnswerTags(text) {
+        return text.replace(/<answer>([\s\S]*?)<\/answer>/g, (match, content) => {
+            const answerId = 'answer-' + Math.random().toString(36).substr(2, 9);
+            return `<div class="answer-block" data-answer-id="${answerId}">
+                ${content.trim()}
+                <button class="copy-answer-btn" data-answer-id="${answerId}" title="复制答案">
+                    <svg viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                        <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                    </svg>
+                    复制
+                </button>
+            </div>`;
+        });
+    }
+
+    // 为 answer 块添加复制功能
+    function addCopyFunctionalityToAnswerBlocks(container) {
+        const copyButtons = container.querySelectorAll('.copy-answer-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const answerId = this.dataset.answerId;
+                const answerBlock = container.querySelector(`[data-answer-id="${answerId}"]`);
+
+                if (answerBlock) {
+                    // 获取纯文本内容，排除复制按钮的文本
+                    const textContent = getAnswerTextContent(answerBlock);
+                    copyAnswerToClipboard(textContent, this);
+                }
+            });
+        });
+    }
+
+    // 获取 answer 块的纯文本内容
+    function getAnswerTextContent(answerBlock) {
+        // 创建一个临时克隆，移除复制按钮
+        const clone = answerBlock.cloneNode(true);
+        const copyBtn = clone.querySelector('.copy-answer-btn');
+        if (copyBtn) {
+            copyBtn.remove();
+        }
+
+        // 返回纯文本内容
+        return clone.textContent || clone.innerText || '';
+    }
+
+    // 复制 answer 内容到剪贴板
+    function copyAnswerToClipboard(text, buttonElement) {
+        const cleanText = text.trim();
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(cleanText).then(() => {
+                showCopyFeedback(buttonElement, '已复制!', true);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                fallbackCopyTextToClipboard(cleanText);
+                showCopyFeedback(buttonElement, '已复制!', true);
+            });
+        } else {
+            // 降级方案
+            const success = fallbackCopyTextToClipboard(cleanText);
+            showCopyFeedback(buttonElement, success ? '已复制!' : '复制失败', success);
+        }
+    }
+
+    // 显示复制反馈
+    function showCopyFeedback(buttonElement, message, isSuccess) {
+        const originalText = buttonElement.innerHTML;
+        const originalColor = buttonElement.style.color;
+
+        // 更新按钮文本和颜色
+        buttonElement.innerHTML = `
+            <svg viewBox="0 0 16 16" fill="currentColor">
+                <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+            </svg>
+            ${message}
+        `;
+        buttonElement.style.color = isSuccess ? '#28a745' : '#dc3545';
+
+        // 2秒后恢复原状
+        setTimeout(() => {
+            buttonElement.innerHTML = originalText;
+            buttonElement.style.color = originalColor;
+        }, 2000);
+
+        // 同时显示全局通知
+        showCopyNotification(message, isSuccess);
     }
 
     // 添加加载指示器
@@ -135,7 +217,23 @@ document.addEventListener('DOMContentLoaded', function () {
         const messages = [];
         document.querySelectorAll('.message').forEach(msg => {
             const isUser = msg.classList.contains('user-message');
-            const content = msg.querySelector('.message-content').innerHTML;
+            const messageContent = msg.querySelector('.message-content');
+
+            let content;
+            if (isUser) {
+                // 对于用户消息，只保存文本内容，不包括复制按钮
+                const copyBtn = messageContent.querySelector('.copy-message-btn');
+                const contentClone = messageContent.cloneNode(true);
+                const clonedCopyBtn = contentClone.querySelector('.copy-message-btn');
+                if (clonedCopyBtn) {
+                    clonedCopyBtn.remove();
+                }
+                content = contentClone.innerHTML.trim();
+            } else {
+                // 对于机器人消息，保存完整内容
+                content = messageContent.innerHTML;
+            }
+
             messages.push({
                 role: isUser ? 'user' : 'assistant',
                 content: content,
@@ -168,21 +266,59 @@ document.addEventListener('DOMContentLoaded', function () {
             if (msg.role === 'user') {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message user-message';
+
+                // 清理历史消息中可能包含的复制按钮HTML
+                let cleanContent = msg.content;
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = cleanContent;
+
+                // 移除可能存在的复制按钮
+                const existingCopyBtn = tempDiv.querySelector('.copy-message-btn');
+                if (existingCopyBtn) {
+                    existingCopyBtn.remove();
+                    cleanContent = tempDiv.innerHTML;
+                }
+
+                // 提取纯文本内容（去除HTML标签）
+                const plainTextContent = tempDiv.textContent || tempDiv.innerText || '';
+
                 messageDiv.innerHTML = `
                     <div class="message-content">
-                        ${msg.content}
+                        ${cleanContent}
+                        <button class="copy-message-btn" title="复制消息">
+                            ⧉
+                        </button>
                     </div>
                 `;
                 chatMessages.appendChild(messageDiv);
+
+                // 为历史消息的复制按钮添加事件监听器
+                const copyBtn = messageDiv.querySelector('.copy-message-btn');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('历史消息复制按钮被点击了'); // 调试日志
+                        console.log('要复制的内容:', plainTextContent); // 调试日志
+                        copyUserMessage(plainTextContent);
+                    });
+                }
             } else {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message bot-message';
+
+                // 处理历史消息中的 <answer> 标签
+                const processedContent = processAnswerTags(msg.content);
+
                 messageDiv.innerHTML = `
                     <div class="message-content markdown-content">
-                        ${msg.content}
+                        ${processedContent}
                     </div>
                 `;
                 chatMessages.appendChild(messageDiv);
+
+                // 为历史消息中的 answer 块添加复制功能
+                addCopyFunctionalityToAnswerBlocks(messageDiv);
             }
         });
         
@@ -250,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const sessionId = generateUUID();
         const newSession = {
             id: sessionId,
-            title: `会话 ${new Date().toLocaleDateString()}`,
+            title: '新会话',  // 初始标题，等待第一个问题后更新
             created_at: new Date().toISOString()
         };
         
@@ -313,18 +449,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!confirm(`确定要删除此会话吗？此操作无法撤销。`)) {
             return;
         }
-        
+
         // 从会话列表中删除
         sessions = sessions.filter(session => session.id !== sessionId);
-        
+
         // 从会话历史中删除
         if (chatHistory[sessionId]) {
             delete chatHistory[sessionId];
         }
-        
+
         // 保存更新到 localStorage
         saveSessionsToLocalStorage();
-        
+
         // 如果删除的是当前会话，创建一个新的
         if (sessionId === currentSessionId) {
             // 如果还有其他会话，选择第一个
@@ -341,11 +477,37 @@ document.addEventListener('DOMContentLoaded', function () {
             renderSessions();
         }
     }
+
+    // 清空所有会话
+    function clearAllSessions() {
+        if (!confirm(`确定要删除所有会话吗？此操作无法撤销。`)) {
+            return;
+        }
+
+        // 清空会话列表和历史记录
+        sessions = [];
+        chatHistory = {};
+        currentSessionId = null;
+
+        // 清除 localStorage
+        localStorage.removeItem('sessions');
+        localStorage.removeItem('chatHistory');
+        localStorage.removeItem('currentSessionId');
+
+        // 创建一个新的会话
+        createSession();
+
+        // 更新会话列表显示
+        renderSessions();
+    }
     
     // 发送消息
     function sendMessage() {
         const message = userInput.value.trim();
         if (message === '' && !currentImageData) return;
+
+        // 如果是会话的第一个问题，更新会话标题
+        updateSessionTitleFromFirstMessage(message);
 
         addUserMessage(message);
         
@@ -373,9 +535,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const responseDiv = addBotMessage('<div class="streaming-status">思考中...</div>', streamingMsgId);
         const streamingContent = responseDiv.querySelector('.markdown-content');
 
-        // Track the response building process
-        let finalResponse = '';
-        let currentStep = '';
+        // Track the accumulated response content
+        let accumulatedContent = '';
 
         // Use fetch with streaming to get the response
         // 创建支持超时的fetch请求
@@ -408,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function () {
             clearImagePreview();
         }
         
-        fetch(`/api/chat_stream?token=${token}`, {
+        fetch(`./api/chat_stream?token=${token}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -433,12 +594,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             if (line.startsWith('data: ')) {
                                 try {
                                     const data = JSON.parse(line.substring(6));
-                                    processStreamingData(data, streamingContent);
-
-                                    // Save final response if received
+                                    // Accumulate response content
                                     if (data.type === 'response') {
-                                        finalResponse = data.content;
+                                        accumulatedContent += data.content;
                                     }
+
+                                    processStreamingData(data, streamingContent, accumulatedContent);
                                     
                                     // 处理会话创建
                                     if (data.type === 'session_created') {
@@ -448,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                         if (!sessions.some(s => s.id === sessionId)) {
                                             const newSession = {
                                                 id: sessionId,
-                                                title: `会话 ${new Date().toLocaleDateString()}`,
+                                                title: '新会话',  // 初始标题，等待第一个问题后更新
                                                 created_at: new Date().toISOString()
                                             };
                                             sessions.push(newSession);
@@ -495,7 +656,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 处理流式数据
-    function processStreamingData(data, contentElement) {
+    function processStreamingData(data, contentElement, accumulatedContent) {
         switch (data.type) {
             case 'connected':
                 contentElement.innerHTML = `<div class="streaming-status">${data.message}</div>`;
@@ -507,6 +668,33 @@ document.addEventListener('DOMContentLoaded', function () {
                 contentElement.innerHTML = `<div class="streaming-status">${data.message}</div>${progressBar}`;
                 break;
 
+            case 'status':
+                // 处理状态更新事件 - 简化显示
+                let statusContainer = contentElement.querySelector('.status-container');
+
+                if (!statusContainer) {
+                    statusContainer = document.createElement('div');
+                    statusContainer.className = 'status-container';
+                    statusContainer.style.cssText = `
+                        font-size: 0.85em;
+                        color: #999;
+                        margin-bottom: 5px;
+                        padding: 3px 6px;
+                        background-color: #f1f3f4;
+                        border-radius: 12px;
+                        display: inline-block;
+                    `;
+                    contentElement.appendChild(statusContainer);
+                }
+
+                // 更新状态信息
+                statusContainer.textContent = data.content;
+                break;
+
+            case 'heartbeat':
+                // 心跳事件，不显示任何内容，只用于保持连接
+                break;
+
             case 'partial':
                 // Handle streaming deltas
                 // Check if we already have a streaming container
@@ -516,7 +704,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     // First partial response, create container
                     streamContainer = document.createElement('div');
                     streamContainer.className = 'streaming-container';
-                    contentElement.innerHTML = ''; // Clear any previous status/progress
                     contentElement.appendChild(streamContainer);
                 }
 
@@ -525,17 +712,60 @@ document.addEventListener('DOMContentLoaded', function () {
                 break;
 
             case 'response':
-                // Show the response with markdown parsing
-                // If it's a final response after partials, replace everything
-                contentElement.innerHTML = marked.parse(data.content);
+                // Show the accumulated response with markdown parsing
+                const processedContent = processAnswerTags(accumulatedContent);
+
+                // 查找或创建响应容器
+                let responseContainer = contentElement.querySelector('.response-container');
+                if (!responseContainer) {
+                    responseContainer = document.createElement('div');
+                    responseContainer.className = 'response-container';
+                    contentElement.appendChild(responseContainer);
+                }
+
+                responseContainer.innerHTML = marked.parse(processedContent);
+
+                // 为所有 answer 块添加复制功能
+                addCopyFunctionalityToAnswerBlocks(contentElement.closest('.message'));
+                break;
+
+            case 'delta':
+                // 处理文本增量更新
+                let deltaContainer = contentElement.querySelector('.delta-container');
+                if (!deltaContainer) {
+                    deltaContainer = document.createElement('div');
+                    deltaContainer.className = 'delta-container';
+                    contentElement.appendChild(deltaContainer);
+                }
+                deltaContainer.innerHTML += data.content || '';
                 break;
 
             case 'complete':
-                // Response is fully complete
+                // Response is fully complete - 清理状态信息，只保留最终响应
+                const completeStatusContainer = contentElement.querySelector('.status-container');
+                if (completeStatusContainer) {
+                    completeStatusContainer.style.display = 'none'; // 隐藏状态信息
+                }
+
                 // Convert any remaining streaming content to proper markdown
-                const streamingContainer = contentElement.querySelector('.streaming-container');
-                if (streamingContainer) {
-                    contentElement.innerHTML = marked.parse(streamingContainer.innerHTML);
+                const completeStreamingContainer = contentElement.querySelector('.streaming-container');
+                const completeDeltaContainer = contentElement.querySelector('.delta-container');
+                const completeResponseContainer = contentElement.querySelector('.response-container');
+
+                if (completeStreamingContainer || completeDeltaContainer || completeResponseContainer) {
+                    let finalContent = accumulatedContent;
+
+                    if (completeStreamingContainer) {
+                        finalContent = completeStreamingContainer.innerHTML;
+                    } else if (completeDeltaContainer) {
+                        finalContent = completeDeltaContainer.innerHTML;
+                    }
+
+                    const processedStreamContent = processAnswerTags(finalContent);
+                    contentElement.innerHTML = marked.parse(processedStreamContent);
+
+                    // 为所有 answer 块添加复制功能
+                    addCopyFunctionalityToAnswerBlocks(contentElement.closest('.message'));
                 }
                 break;
 
@@ -545,6 +775,157 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         scrollToBottom();
+    }
+
+    // 复制用户消息功能
+    function copyUserMessage(messageText) {
+        console.log('开始复制:', messageText); // 调试日志
+
+        // 解码HTML实体并清理空格换行
+        let decodedText = messageText.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+        // 清理多余的空格和换行
+        decodedText = decodedText
+            .replace(/\s+/g, ' ')  // 将多个空格/换行/制表符替换为单个空格
+            .trim();               // 去除首尾空格
+
+        console.log('清理后的文本:', decodedText); // 调试日志
+
+        // 复制到剪贴板
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            console.log('使用 navigator.clipboard API'); // 调试日志
+            navigator.clipboard.writeText(decodedText).then(() => {
+                console.log('复制成功'); // 调试日志
+                showCopyNotification('已复制到剪贴板');
+            }).catch(err => {
+                console.error('复制失败:', err);
+                // 尝试降级方案
+                fallbackCopyTextToClipboard(decodedText);
+            });
+        } else {
+            console.log('使用降级方案'); // 调试日志
+            // 降级方案
+            fallbackCopyTextToClipboard(decodedText);
+        }
+    }
+
+    // 降级复制方案
+    function fallbackCopyTextToClipboard(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+
+        // 避免在iOS上出现缩放
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        let successful = false;
+        try {
+            successful = document.execCommand('copy');
+            if (successful) {
+                console.log('降级方案复制成功'); // 调试日志
+                showCopyNotification('已复制到剪贴板');
+            } else {
+                console.log('降级方案复制失败'); // 调试日志
+                showCopyNotification('复制失败', false);
+            }
+        } catch (err) {
+            console.error('降级方案复制出错:', err);
+            showCopyNotification('复制失败', false);
+        }
+
+        document.body.removeChild(textArea);
+        return successful;
+    }
+
+    // 根据第一个消息更新会话标题
+    function updateSessionTitleFromFirstMessage(message) {
+        if (!currentSessionId || !message.trim()) return;
+
+        // 查找当前会话
+        const currentSession = sessions.find(s => s.id === currentSessionId);
+        if (!currentSession) return;
+
+        // 如果当前标题是默认的"新会话"，则使用第一个问题更新
+        if (currentSession.title === '新会话') {
+            // 创建缩略标题
+            const truncatedTitle = truncateText(message, 30);
+            currentSession.title = truncatedTitle;
+
+            // 保存到本地存储
+            saveSessionsToLocalStorage();
+
+            // 如果会话管理模态框正在显示，更新显示
+            if (document.getElementById('sessionModal').classList.contains('show')) {
+                renderSessions();
+            }
+        }
+    }
+
+    // 截断文本并添加省略号
+    function truncateText(text, maxLength) {
+        if (text.length <= maxLength) {
+            return text;
+        }
+
+        // 在适当的位置截断，避免在单词中间截断
+        let truncated = text.substring(0, maxLength);
+
+        // 如果截断点不是空格，尝试找到最近的空格
+        if (text[maxLength] && text[maxLength] !== ' ') {
+            const lastSpaceIndex = truncated.lastIndexOf(' ');
+            if (lastSpaceIndex > maxLength * 0.7) { // 只有当空格位置不太靠前时才使用
+                truncated = truncated.substring(0, lastSpaceIndex);
+            }
+        }
+
+        return truncated + '...';
+    }
+
+    // 显示复制通知
+    function showCopyNotification(message, isSuccess = true) {
+        // 创建通知元素
+        const notification = document.createElement('div');
+        notification.className = 'copy-notification';
+        notification.textContent = message;
+
+        const backgroundColor = isSuccess ? '#28a745' : '#dc3545';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${backgroundColor};
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        `;
+
+        document.body.appendChild(notification);
+
+        // 显示动画
+        setTimeout(() => {
+            notification.style.opacity = '1';
+        }, 10);
+
+        // 2秒后移除
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 2000);
     }
 
     // 清除图片预览
@@ -611,11 +992,44 @@ document.addEventListener('DOMContentLoaded', function () {
     
     createSessionBtn.addEventListener('click', createSession);
     
-    refreshSessionsBtn.addEventListener('click', function() {
-        // 刷新会话列表
-        renderSessions();
+    clearAllSessionsBtn.addEventListener('click', function() {
+        // 清空所有会话
+        clearAllSessions();
+    });
+
+    // 处理移动端键盘弹出时的视口问题
+    function handleViewportResize() {
+        if (window.innerWidth <= 768) {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+
+            // 处理iOS Safari地址栏隐藏/显示
+            const chatContainer = document.querySelector('.chat-container');
+            if (chatContainer) {
+                chatContainer.style.height = `${window.innerHeight}px`;
+            }
+        }
+    }
+
+    // 监听窗口大小变化（键盘弹出/收起）
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('orientationchange', () => {
+        setTimeout(handleViewportResize, 100);
+    });
+
+    // 初始化视口
+    handleViewportResize();
+
+    // 输入框聚焦时的处理
+    userInput.addEventListener('focus', function() {
+        // 短暂延迟后滚动到输入框
+        setTimeout(() => {
+            this.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 300);
     });
 
     // 初始化聊天界面
-    userInput.focus();
+    if (window.innerWidth > 768) {
+        userInput.focus();
+    }
 });
