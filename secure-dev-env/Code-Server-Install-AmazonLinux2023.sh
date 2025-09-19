@@ -54,9 +54,9 @@ tee ~/environment/.vscode/settings.json <<EOF
 EOF
 
 echo '{ "query": { "folder": "/home/ec2-user/environment" } }' > ~/.local/share/code-server/coder.json
-code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools --force
-code-server --install-extension redhat.vscode-yaml --force
-code-server --install-extension amazonwebservices.amazon-q-vscode --force
+#code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools --force
+#code-server --install-extension redhat.vscode-yaml --force
+#code-server --install-extension amazonwebservices.amazon-q-vscode --force
 
 sudo systemctl restart caddy
 sudo systemctl restart code-server@ec2-user
