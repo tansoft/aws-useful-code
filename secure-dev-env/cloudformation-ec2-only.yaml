@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  Secure development environment with EC2, Code-Server
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Primary domain name (e.g. dev.example.com)
+
+  ExistVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select vpc
+
+  ExistSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Select subnet
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t4g.small
+      - t4g.medium
+      - m7i.large
+      - m7i.2xlarge
+      - m7i.4xlarge
+      - m7g.large
+      - m7g.2xlarge
+      - m7g.4xlarge
+    Description: EC2 instance type (t3/t4g for light workloads, m7i/m7g for compute-intensive workloads)
+
+  OSType:
+    Type: String
+    Default: AmazonLinux2023
+    AllowedValues:
+      - AmazonLinux2023
+      - Ubuntu22.04
+    Description: Operating System type (AmazonLinux2023 or Ubuntu22.04)
+
+  VolumeSize:
+    Type: Number
+    Default: 50
+    MinValue: 20
+    MaxValue: 100
+    Description: EBS volume size (GB)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Select SSH key pair
+
+  AllowedIp:
+    Type: String
+    Default: 0.0.0.0/32
+    Description: Additional CIDR for direct EC2 SSH access, default is not allowed
+
+  CodeServerPassword:
+    Type: String
+    NoEcho: true
+    Description: VSCode Server login password
+    MinLength: 8
+    MaxLength: 32
+
+Conditions:
+  IsArmInstance: !Or
+    - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "t4g"]
+    - !Equals [!Select [0, !Split [".", !Ref InstanceType]], "m7g"]
+  IsAmazonLinux: !Equals [!Ref OSType, "AmazonLinux2023"]
+
+Mappings:
+  # aws ec2 describe-managed-prefix-lists  --region <REGION> | jq -r '.PrefixLists[] | select (.PrefixListName == "com.amazonaws.global.cloudfront.origin-facing") | .PrefixListId'
+  AWSRegions2PrefixListID:
+    ap-northeast-1:
+      PrefixList: pl-58a04531
+    ap-northeast-2:
+      PrefixList: pl-22a6434b
+    ap-south-1:
+      PrefixList: pl-9aa247f3
+    ap-southeast-1:
+      PrefixList: pl-31a34658
+    ap-southeast-2:
+      PrefixList: pl-b8a742d1
+    ca-central-1:
+      PrefixList: pl-38a64351
+    eu-central-1:
+      PrefixList: pl-a3a144ca
+    eu-north-1:
+      PrefixList: pl-fab65393
+    eu-west-1:
+      PrefixList: pl-4fa04526
+    eu-west-2:
+      PrefixList: pl-93a247fa
+    eu-west-3:
+      PrefixList: pl-75b1541c
+    sa-east-1:
+      PrefixList: pl-5da64334
+    us-east-1:
+      PrefixList: pl-3b927c52
+    us-east-2:
+      PrefixList: pl-b6a144df
+    us-west-1:
+      PrefixList: pl-4ea04527
+    us-west-2:
+      PrefixList: pl-82a045eb
+
+Resources:
+  DevInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} Security group for development instance"
+      VpcId: !Ref ExistVpcId
+      SecurityGroupIngress:
+        - Description: Allow SSH from allowed IP
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedIp
+        - Description: Allow HTTP from com.amazonaws.global.cloudfront.origin-facing
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId:
+            !FindInMap [AWSRegions2PrefixListID, !Ref "AWS::Region", PrefixList]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-security-group"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+  DevInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref ExistSubnetId
+      ImageId: !If
+        - IsAmazonLinux
+        - !If
+          - IsArmInstance
+          - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+          - "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+        - !If
+          - IsArmInstance
+          - "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id}}"
+          - "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref DevInstanceSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cat <<"EOT" | sudo -E -H -u ${!If [IsAmazonLinux, 'ec2-user', 'ubuntu']} bash
+          TEMP_FILE=$(mktemp)
+          trap 'rm -f "$TEMP_FILE"' EXIT
+          curl -fsSL https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/secure-dev-env/Code-Server-Install-${OSType}.sh > "$TEMP_FILE"
+          chmod +x "$TEMP_FILE"
+          while true
+          do
+            bash "$TEMP_FILE" ${DomainName} ${CodeServerPassword} >> /tmp/code-server-install.log 2>&1
+            if [ $? -eq 0 ]; then
+              break
+            fi
+            echo "retry install" >> /tmp/code-server-install.log
+            sleep 5
+          done
+          EOT
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-dev-instance"
+        - Key: SecureEnv
+          Value: !Ref AWS::StackName
+
+Outputs:
+  EnvironmentName:
+    Description: Environment name
+    Value: !Ref AWS::StackName
+
+  DomainName:
+    Description: Primary domain name
+    Value: !Ref DomainName
+
+  InstancePrivateDNS:
+    Description: EC2 instance private DNS
+    Value: !GetAtt DevInstance.PrivateDnsName
+
+  SecurityGroupId:
+    Description: Security group ID for development instance
+    Value: !Ref DevInstanceSecurityGroup
