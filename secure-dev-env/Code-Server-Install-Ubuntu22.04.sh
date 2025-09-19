@@ -67,9 +67,9 @@ EOF
 
 # Set default folder and install extensions
 echo '{ "query": { "folder": "/home/ubuntu/environment" } }' > ~/.local/share/code-server/coder.json
-code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools --force
-code-server --install-extension redhat.vscode-yaml --force
-code-server --install-extension amazonwebservices.amazon-q-vscode --force
+#code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools --force
+#code-server --install-extension redhat.vscode-yaml --force
+#code-server --install-extension amazonwebservices.amazon-q-vscode --force
 
 # Restart services
 sudo systemctl restart caddy

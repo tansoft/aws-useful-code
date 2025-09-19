@@ -1,1 +1,0 @@
-# Placeholder for process handler Lambda function

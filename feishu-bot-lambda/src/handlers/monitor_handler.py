@@ -1,1 +1,0 @@
-# Placeholder for monitor handler Lambda function
