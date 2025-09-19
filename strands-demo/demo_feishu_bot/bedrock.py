@@ -8,6 +8,8 @@ from strands_tools import http_request, current_time
 from strands.tools.mcp import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
 from contextlib import asynccontextmanager
+from cardBuild import build_card
+from api import get_current_time, updateTextCard
 
 logging.getLogger("strands").setLevel(logging.INFO)  # Change to INFO to see more details
 logging.basicConfig(
@@ -23,7 +25,7 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 # Initialize Bedrock model
 bedrock_model = BedrockModel(
     model_id="global.anthropic.claude-sonnet-4-20250514-v1:0",
-    region_name="ap-northeast-1",
+    region_name="us-east-1",
     temperature=0.1
 )
 

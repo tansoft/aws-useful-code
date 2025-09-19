@@ -5,6 +5,8 @@ import asyncio
 import json
 import logging
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from asgiref.wsgi import WsgiToAsgi
@@ -32,13 +34,25 @@ cache.init_app(app)
 
 event_manager = EventManager()
 
+# 创建线程池执行器
+executor = ThreadPoolExecutor(max_workers=4)
+
+def run_async_in_thread(coro):
+    """在新线程中运行异步函数"""
+    def run_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    
+    thread = threading.Thread(target=run_in_thread)
+    thread.daemon = True
+    thread.start()
 
 # 异步调用讯飞星火认知大模型
 async def async_iFlytek_sendMessage(app_id: str, message_id: str, user_id: str, message) -> None:
-    print(app_id)
-    print(message_id)
-    print(user_id)
-    print(message)
     SparkApi.sendMessage(app_id, message_id, user_id, message)
 
 # 异步处理用户进群事件
@@ -124,9 +138,8 @@ def message_receive_event_handler(req_data: MessageReceiveEvent):
             # 异步调用大模型实现打字机问答功能
             if user_id is None:
                 user_id = "1"
-            asyncio.create_task(
-                async_bedrock_sendMessage(app_id, message_boy.data.message_id, user_id,
-                                          text_content))
+            run_async_in_thread(async_bedrock_sendMessage(app_id, message_boy.data.message_id, user_id, text_content))
+            # asyncio.create_task(async_iFlytek_sendMessage(app_id, message_boy.data.message_id, user_id, text_content))
         return jsonify()
     else:
         logging.error("Other types of messages have not been processed yet")
