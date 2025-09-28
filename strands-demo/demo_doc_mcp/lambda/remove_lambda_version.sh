@@ -30,12 +30,14 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
     echo "删除自定义域名配置: $DOMAIN_NAME"
     
     # 删除API映射
+    echo "删除API映射..."
     aws apigatewayv2 delete-api-mapping \
         --domain-name $DOMAIN_NAME \
         --api-mapping-id $(aws apigatewayv2 get-api-mappings --domain-name $DOMAIN_NAME --region $REGION --query 'Items[0].ApiMappingId' --output text) \
         --region $REGION 2>/dev/null || echo "API映射删除失败或不存在"
     
     # 删除域名
+    echo "删除API GW自定义域名..."
     aws apigatewayv2 delete-domain-name \
         --domain-name $DOMAIN_NAME \
         --region $REGION 2>/dev/null || echo "域名删除失败或不存在"
@@ -45,7 +47,7 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
         # 如果存在Route53 ZONEID，需要删除Route53的域名解释记录，和ACM证书的验证记录
         if [[ "$ROUTE53_ZONEID" != "null" && -n "$ROUTE53_ZONEID" ]]; then
             # 删除域名解析记录
-            echo("删除域名记录...")
+            echo "删除域名记录..."
             aws route53 list-resource-record-sets \
                 --hosted-zone-id $ROUTE53_ZONEID \
                 --query "ResourceRecordSets[?Name == '$DOMAIN_NAME.']" \
@@ -54,11 +56,11 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
                     aws route53 change-resource-record-sets \
                         --hosted-zone-id $ROUTE53_ZONEID \
                         --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record}]}" \
-                        --region $REGION 2>/dev/null || echo "Route53记录删除失败或不存在"
+                        2>/dev/null || echo "Route53记录删除失败或不存在"
             done
 
             # 删除ACM证书验证记录
-            echo("删除ACM验证记录...")
+            echo "删除ACM验证记录..."
             aws route53 list-resource-record-sets \
                 --hosted-zone-id $ROUTE53_ZONEID \
                 --query "ResourceRecordSets[?contains(Name, '_acm-challenge')]" \
@@ -67,10 +69,11 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
                     aws route53 change-resource-record-sets \
                         --hosted-zone-id $ROUTE53_ZONEID \
                         --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record}]}" \
-                        --region $REGION 2>/dev/null || echo "ACM验证记录删除失败或不存在"
+                        2>/dev/null || echo "ACM验证记录删除失败或不存在"
             done
         fi        
 
+        echo "删除证书..."
         aws acm delete-certificate \
             --certificate-arn $CERT_ARN \
             --region $REGION 2>/dev/null || echo "证书删除失败或不存在"
@@ -101,6 +104,7 @@ LAYER_VERSIONS=$(aws lambda list-layer-versions \
 
 if [[ -n "$LAYER_VERSIONS" ]]; then
     for version in $LAYER_VERSIONS; do
+        echo "删除Lambda Layer版本: $LAYER_NAME $version"
         aws lambda delete-layer-version \
             --layer-name $LAYER_NAME \
             --version-number $version \
@@ -110,8 +114,31 @@ else
     echo "未找到Layer版本或Layer不存在"
 fi
 
-# 5. 删除配置文件
+# 5. 删除策略和角色
+aws iam list-role-policies \
+    --role-name $ROLE_NAME \
+    --region $REGION \
+    | jq -r '.PolicyNames[]' \
+    | while read -r policy_name; do
+        echo "删除策略：$policy_name"
+        aws iam delete-role-policy \
+            --role-name $ROLE_NAME \
+            --policy-name $policy_name \
+            --region $REGION 2>/dev/null || echo "策略 $policy_name 删除失败或不存在"
+    done
+
+echo "删除角色：$ROLE_NAME"
+aws iam delete-role \
+        --role-name $ROLE_NAME \
+        --region $REGION 2>/dev/null || echo "角色 $ROLE_NAME 删除失败或不存在"
+
+# 6. 删除配置文件
 echo "删除配置文件: $CONFIG_FILE"
+read -p "确认删除配置文件吗？(y/n) " -n 1 -r
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "取消删除配置文件"
+    exit 0
+fi
 rm -f $CONFIG_FILE
 
 echo "清理完成！"
