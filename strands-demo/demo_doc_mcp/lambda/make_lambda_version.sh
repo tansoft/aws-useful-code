@@ -39,7 +39,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-LAYER_NAME="${FUNCTION_NAME}-layer"
 API_NAME="${FUNCTION_NAME}-api"
 ROLE_NAME="${FUNCTION_NAME}-role"
 POLICY_NAME="${FUNCTION_NAME}-policy"
@@ -83,42 +82,66 @@ aws iam attach-role-policy \
     --role-name $ROLE_NAME \
     --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole || echo '默认策略已经存在，跳过'
 
-# 1. 创建Lambda Layer
-# 查询layer是否存在
-EXISTING_LAYER=$(aws lambda list-layer-versions \
-    --layer-name $LAYER_NAME \
-    --region $REGION \
-    --query 'LayerVersions[0].LayerVersionArn' \
-    --output text)
-if [[ "$EXISTING_LAYER" == "None" ]]; then
-    echo "Layer不存在,开始创建..."
-    mkdir -p $TEMP_DIR/python
-    pip install --only-binary=:all: -r ../requirements.txt -t $TEMP_DIR/python/
-    cd $TEMP_DIR
-    rm -rf python/*dist-info
-    find . -type d -name "__pycache__" -exec rm -rf {} +
-    find . -type d -name "tests" -exec rm -rf {} +
-    find . -type d -name "benchmarks" -exec rm -rf {} +
-    zip -9 -r layer.zip python/
-    ls -l layer.zip
-
-    LAYER_ARN=$(aws lambda publish-layer-version \
+# 生成一个函数
+function make_layer() {
+    local LAYER_NAME=$1
+    local REGION=$2
+    local PYVER=$3
+    local TEMP_DIR=$4
+    local LAYER_ARN=
+    shift 4
+    # 查询layer是否存在
+    local EXISTING_LAYER=$(aws lambda list-layer-versions \
         --layer-name $LAYER_NAME \
-        --zip-file fileb://layer.zip \
-        --compatible-runtimes python$PYVER \
         --region $REGION \
-        --query 'LayerVersionArn' --output text)
+        --query 'LayerVersions[0].LayerVersionArn' \
+        --output text 2>/dev/null)
+    if [[ -z "$EXISTING_LAYER" ]]; then
+        echo "制作Lambda Layer出错！！"
+    fi
+    if [[ "$EXISTING_LAYER" == "None" ]]; then
+        #echo "Layer不存在,开始创建..."
+        mkdir -p $TEMP_DIR/python
+        pip install --only-binary=:all: -t $TEMP_DIR/python/ $@ 2>/tmp/pip.txt 1>&2
+        cd $TEMP_DIR
+        # for pattern in "__pycache__" "dist-info" "tests" "benchmarks"; do
+        for pattern in "__pycache__"; do
+            find . -type d -name "$pattern" -exec rm -rf {} + 2>/dev/null 1>&2
+        done
+        # 如果
+        zip -9 -r $LAYER_NAME-layer.zip python/ 2>/dev/null 1>&2
 
-    echo "Layer创建完成: $LAYER_ARN"
-    cd - > /dev/null
-else
-    echo "Layer已存在: $EXISTING_LAYER"
-    LAYER_ARN=$EXISTING_LAYER
-fi
+        LAYER_ARN=$(aws lambda publish-layer-version \
+            --layer-name $LAYER_NAME \
+            --zip-file fileb://$LAYER_NAME-layer.zip \
+            --compatible-runtimes python$PYVER \
+            --region $REGION \
+            --query 'LayerVersionArn' --output text 2>/dev/null)
+
+        rm -f $LAYER_NAME-layer.zip
+        #echo "Layer创建完成: $LAYER_ARN"
+        cd - > /dev/null
+    else
+        #echo "Layer已存在: $EXISTING_LAYER"
+        LAYER_ARN=$EXISTING_LAYER
+    fi
+    echo $LAYER_ARN
+}
+
+# 1. 创建Lambda Layer
+# 单layer超过 70M，分为多个layer，--no-deps xxx
+# LAYER_ARN=$(make_layer $FUNCTION_NAME-layer $REGION $PYVER $TEMP_DIR -r ../requirements.txt)
+echo "制作fastapi unicorn层..."
+LAYER_ARN1=$(make_layer fastapi-uvicorn-jinja2 $REGION $PYVER $TEMP_DIR fastapi uvicorn jinja2)
+echo "Lambda Layer: $LAYER_ARN1"
+echo "制作strands-agents层..."
+LAYER_ARN2=$(make_layer strands-agents $REGION $PYVER $TEMP_DIR strands-agents strands-agents-tools)
+echo "Lambda Layer: $LAYER_ARN2"
 
 # 2. 准备Lambda代码
 echo "准备Lambda代码..."
 cp -r ../static ../templates ../mcp_web.py run.sh $TEMP_DIR/
+touch $TEMP_DIR/__init__.py
 cd $TEMP_DIR
 zip -r function.zip . -x "python/*"
 
@@ -132,9 +155,9 @@ FUNCTION_ARN=$(aws lambda create-function \
     --zip-file fileb://function.zip \
     --timeout 300 \
     --memory-size 256 \
-    --layers "$LAYER_ARN" "$ADAPTER_ARCH" \
+    --layers "$LAYER_ARN1" "$LAYER_ARN2" "$ADAPTER_ARCH" \
     --region $REGION \
-    --environment Variables="{AWS_LAMBDA_EXEC_WRAPPER='/opt/bootstrap',AWS_LWA_INVOKE_MODE='response_stream',PORT=9000,VALID_TOKEN=$VALID_TOKEN}" \
+    --environment Variables="{AWS_LAMBDA_EXEC_WRAPPER='/opt/bootstrap',AWS_LWA_INVOKE_MODE='response_stream',PORT=9000,VALID_TOKEN=$VALID_TOKEN,OTEL_SDK_DISABLED=true,SESSION_DIR=/tmp/sessions}" \
     --query 'FunctionArn' --output text 2>/dev/null || \
 aws lambda update-function-code \
         --function-name $FUNCTION_NAME \
@@ -152,25 +175,88 @@ API_ID=$(aws apigatewayv2 get-apis \
     --region $REGION \
     --query "Items[?Name=='$API_NAME'].ApiId" --output text)
 
-if [[ -z "$API_ID" ]]; then
+if [[ -z "$API_ID" || "$API_ID" == "None" ]]; then
     echo "创建 API Gateway ..."
     API_ID=$(aws apigatewayv2 create-api \
         --name $API_NAME \
         --protocol-type HTTP \
-        --target $FUNCTION_ARN \
         --region $REGION \
         --query 'ApiId' --output text)
 fi
 echo "API_ID: $API_ID"
 
 # 添加Lambda权限
+aws lambda remove-permission \
+    --function-name $FUNCTION_NAME \
+    --statement-id api-gateway-invoke \
+    --region $REGION 2>/dev/null || true
+
 aws lambda add-permission \
     --function-name $FUNCTION_NAME \
     --statement-id api-gateway-invoke \
     --action lambda:InvokeFunction \
     --principal apigateway.amazonaws.com \
     --source-arn "arn:aws:execute-api:$REGION:$(aws sts get-caller-identity --query Account --output text):$API_ID/*/*" \
-    --region $REGION 2>/dev/null || true
+    --region $REGION
+
+# 检查并创建集成
+echo "检查集成..."
+INTEGRATION_ID=$(aws apigatewayv2 get-integrations --api-id $API_ID --region $REGION --query 'Items[0].IntegrationId' --output text)
+
+if [[ -n "$INTEGRATION_ID" && "$INTEGRATION_ID" != "None" ]]; then
+    echo "已存在集成ID: $INTEGRATION_ID"
+    # 更新集成URI确保正确
+    aws apigatewayv2 update-integration \
+        --api-id $API_ID \
+        --integration-id $INTEGRATION_ID \
+        --integration-uri $FUNCTION_ARN \
+        --integration-type AWS_PROXY \
+        --payload-format-version "2.0" \
+        --region $REGION
+else
+    # 创建新集成
+    echo "创建新集成..."
+    INTEGRATION_ID=$(aws apigatewayv2 create-integration \
+        --api-id $API_ID \
+        --integration-type AWS_PROXY \
+        --integration-uri $FUNCTION_ARN \
+        --payload-format-version "2.0" \
+        --region $REGION \
+        --query 'IntegrationId' --output text)
+fi
+echo "集成ID: $INTEGRATION_ID"
+
+# 检查并创建默认路由
+DEFAULT_ROUTE=$(aws apigatewayv2 get-routes --api-id $API_ID --region $REGION --query 'Items[?RouteKey==`$default`].RouteId' --output text)
+if [[ -n "$DEFAULT_ROUTE" && "$DEFAULT_ROUTE" != "None" ]]; then
+    echo "更新默认路由: $DEFAULT_ROUTE"
+    aws apigatewayv2 update-route \
+        --api-id $API_ID \
+        --route-id $DEFAULT_ROUTE \
+        --target "integrations/$INTEGRATION_ID" \
+        --region $REGION
+else
+    echo "创建默认路由"
+    aws apigatewayv2 create-route \
+        --api-id $API_ID \
+        --route-key '$default' \
+        --target "integrations/$INTEGRATION_ID" \
+        --region $REGION
+fi
+
+# 创建或更新stage
+echo "创建/更新阶段..."
+STAGE_EXISTS=$(aws apigatewayv2 get-stages --api-id $API_ID --region $REGION --query 'Items[?StageName==`$default`].StageName' --output text 2>/dev/null || echo "None")
+if [[ "$STAGE_EXISTS" == "None" || -z "$STAGE_EXISTS" ]]; then
+    aws apigatewayv2 create-stage \
+        --api-id $API_ID \
+        --stage-name '$default' \
+        --auto-deploy \
+        --region $REGION
+    echo "Stage创建完成"
+else
+    echo "Stage已存在: $STAGE_EXISTS"
+fi
 
 API_ENDPOINT=$(aws apigatewayv2 get-api \
     --api-id $API_ID \
@@ -210,7 +296,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
 
         if [[ "$CERT_STATUS" == "PENDING_VALIDATION" ]]; then
             echo "证书状态: 待验证，等待证书验证记录生成..."
-            sleep 10
+            sleep 2
             # 获取证书验证记录
             CERT_VALIDATION=$(aws acm describe-certificate \
                 --certificate-arn $CERT_ARN \
@@ -281,12 +367,16 @@ if [[ -n "$DOMAIN_NAME" ]]; then
         if [[ -n "$EXISTING_MAPPING" && "$EXISTING_MAPPING" != "None" ]]; then
             echo "API映射已存在"
         else
+            # 等待stage创建完成
+            sleep 2
             # 创建API映射
+            echo "创建API映射..."
             aws apigatewayv2 create-api-mapping \
                 --domain-name $DOMAIN_NAME \
                 --api-id $API_ID \
                 --stage '$default' \
                 --region $REGION
+            echo "API映射创建完成"
         fi
 
         # 检查Route53上是否存在该域名的记录
@@ -394,7 +484,7 @@ cat > deployment_info.json << EOF
 {
     "region": "$REGION",
     "function_name": "$FUNCTION_NAME",
-    "layer_name": "$LAYER_NAME",
+    "layer_name": "$LAYER_ARN1 $LAYER_ARN2",
     "api_name": "$API_NAME",
     "api_id": "$API_ID",
     "api_endpoint": "$API_ENDPOINT",

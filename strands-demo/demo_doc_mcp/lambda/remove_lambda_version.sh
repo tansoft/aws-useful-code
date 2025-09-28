@@ -94,25 +94,33 @@ aws lambda delete-function \
     --function-name $FUNCTION_NAME \
     --region $REGION 2>/dev/null || echo "Lambda函数删除失败或不存在"
 
+function delete_layer() {
+    local LAYER_NAME=$1
+    local REGION=$2
+    local version=
+    local LAYER_VERSIONS=$(aws lambda list-layer-versions \
+        --layer-name $LAYER_NAME \
+        --region $REGION \
+        --query 'LayerVersions[].Version' \
+        --output text 2>/dev/null || echo "")
+
+    if [[ -n "$LAYER_VERSIONS" ]]; then
+        for version in $LAYER_VERSIONS; do
+            echo "删除Lambda Layer版本: $LAYER_NAME $version"
+            aws lambda delete-layer-version \
+                --layer-name $LAYER_NAME \
+                --version-number $version \
+                --region $REGION 2>/dev/null || echo "Layer版本 $version 删除失败"
+        done
+    else
+        echo "未找到Layer版本或Layer不存在"
+    fi
+}
+
 # 4. 删除Lambda Layer的所有版本
 echo "删除Lambda Layer: $LAYER_NAME"
-LAYER_VERSIONS=$(aws lambda list-layer-versions \
-    --layer-name $LAYER_NAME \
-    --region $REGION \
-    --query 'LayerVersions[].Version' \
-    --output text 2>/dev/null || echo "")
-
-if [[ -n "$LAYER_VERSIONS" ]]; then
-    for version in $LAYER_VERSIONS; do
-        echo "删除Lambda Layer版本: $LAYER_NAME $version"
-        aws lambda delete-layer-version \
-            --layer-name $LAYER_NAME \
-            --version-number $version \
-            --region $REGION 2>/dev/null || echo "Layer版本 $version 删除失败"
-    done
-else
-    echo "未找到Layer版本或Layer不存在"
-fi
+for pattern in $LAYER_NAME; do
+    delete_layer $pattern $REGION
 
 # 5. 删除策略和角色
 aws iam list-role-policies \

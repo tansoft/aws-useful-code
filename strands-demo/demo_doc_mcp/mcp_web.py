@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.WARNING, format="%(asctime)s | %(levelname)s |
 logging.getLogger("strands").setLevel(logging.WARNING)
 
 # Initialize session directory
-SESSION_DIR = os.path.join(os.path.dirname(__file__), "sessions")
+SESSION_DIR = os.environ.get("SESSION_DIR", os.path.join(os.path.dirname(__file__), "sessions"))
 os.makedirs(SESSION_DIR, exist_ok=True)
 
 @asynccontextmanager
