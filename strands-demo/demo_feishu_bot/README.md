@@ -23,6 +23,7 @@ systemctl enable redis-server
 # 启动服务
 pip install -r requirements.txt
 python server.py
+# 注意：安全组中开启 9000 端口，可以指定飞书服务器回调ip prefix list，避免端口公开，获取方式：https://open.feishu.cn/document/server-docs/event-subscription-guide/list
 ```
 
 * 配置飞书回调接口

@@ -77,9 +77,7 @@ def card_praise(data: Card) -> WinCard:
     # if messagedata.success():
     text_content = get_text_from_json(messagedata.data.items[0].body.content)
     return WinCard.builder() \
-        .card(build_card("🎉 处理结果",
-                         get_current_time(),
-                         text_content, True, False)) \
+        .card(build_card(text_content, True)) \
         .mate(True) \
         .continue_processing(False) \
         .build()

@@ -1,13 +1,14 @@
 import json
 import logging
 import os
+import time
 from strands import Agent
 from strands.models import BedrockModel
 from strands.session import FileSessionManager
+from strands.agent.conversation_manager import SummarizingConversationManager
 from strands_tools import http_request, current_time
 from strands.tools.mcp import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
-from contextlib import asynccontextmanager
 from cardBuild import build_card
 from api import get_current_time, updateTextCard
 
@@ -24,8 +25,9 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 
 # Initialize Bedrock model
 bedrock_model = BedrockModel(
-    model_id="global.anthropic.claude-sonnet-4-20250514-v1:0",
-    region_name="us-east-1",
+    #model_id="apac.anthropic.claude-sonnet-4-20250514-v1:0",
+    model_id="apac.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    region_name="ap-northeast-1",
     temperature=0.1
 )
 
@@ -60,29 +62,37 @@ async def async_bedrock_sendMessage(app_id: str, message_id: str, user_id: str, 
             session_id=session_id,
             storage_dir=SESSION_DIR
         )
-        
+        conversation_manager = SummarizingConversationManager(summary_ratio=0.3, preserve_recent_messages=6)
+
         # 为每个请求创建一个新的 Agent 实例
         # 所有会话数据仍会持久化到磁盘，下次请求会自动加载
         agent = Agent(
             model=bedrock_model,
-            system_prompt="""你是一个AWS解决方案架构师
-            处理问题的逻辑按以下步骤：
-            1. 需要通过MCP的能力或者搜索互联网的方式以准确回答客户的问题，并给出相应的参考链接以证明其真实性
-            2. 在遇到无法处理的问题时，也可以提出相关建议或者解决方案
-            3. 在调用工具时，告知一下将调用的工具及方法
-            4. 输出的内容使用markdown的格式
-            输出格式如下：
-            ### 总结
-            {简要的总结内容}
-            ### 参考链接
-            {链接}-{链接内容简要说明}
-            ### 更多建议(如有)
-            {建议的内容}
-            ### 补充内容
-            {有可能需要额外了解的内容/或者会被进一步提问的问题}""",
+            callback_handler=None,
+            conversation_manager=conversation_manager,
+            system_prompt="""你是一个AWS解决方案架构师，专业、准确地回答客户的AWS相关问题。
+
+处理原则：
+1. 必须通过MCP工具或搜索互联网获取准确信息
+2. 所有技术结论都必须有权威参考链接支撑
+3. 严禁编造或猜测任何技术信息
+4. 根据问题类型灵活选择回答格式
+
+输出格式：
+### 详细说明
+{针对答案的技术细节，每个关键点都必须包含：}
+- 参考链接：{权威AWS文档链接}
+- 参考内容：{从官方文档中提取的关键信息摘要}
+
+### 直接答案
+{用于直接用来回答的内容，回答的点可能有多个，回答尽可能口语化并且每个回答带上相关的参考链接。参考回答格式：<answer>可以使用xxx的
+  xxx实现xxx功能，适用于xxx场景。xxx的参考链接：https://reference.com/answer.html</answer>}
+
+### 相关建议（如需要）
+{额外的建议或注意事项，同样需要包含参考链接和参考内容}""",
             tools=current_tools,
             session_manager=session_manager,
-            agent_id="default"  # 使用固定的 agent_id
+            agent_id="default"
         )
         
         # Prepare the messages list for agent
@@ -119,24 +129,33 @@ async def async_bedrock_sendMessage(app_id: str, message_id: str, user_id: str, 
                 #return
     
         # Process the entire stream
-        alltext = ''
+        alltext = ' '
         
         print(messages)
         # If we have messages, stream the response
+        st = time.time()
+        toolsidx = 1
+        toolsmsg = ""
         if messages:
             async for event in agent.stream_async(messages):
-                print(event)
+                #print(event)
+                if "current_tool_use" in event:
+                    tool_name = event["current_tool_use"].get('name', '未知工具')
+                    toolsmsg = "#" + str(toolsidx) + " " + tool_name
+                    toolsidx+=1
                 if "data" in event:
                     alltext += event["data"]
                     alltext = alltext.replace('<thinking>','***').replace('</thinking>',"***\n\n")
-                    print('step build card')
-                    card_content = build_card("处理结果", get_current_time(), alltext, False, True)
-                    updateTextCard(app_id, message_id, card_content)
-                    #yield f"data: {json.dumps({'type': 'response', 'content': alltext, 'session_id': session_id})}\n\n"
-                    print('step build card updated')
+                    if time.time() - st > 2:
+                        st = time.time()
+                        print('step build card')
+                        card_content = build_card(alltext, False, toolsmsg)
+                        updateTextCard(app_id, message_id, card_content)
+                        #yield f"data: {json.dumps({'type': 'response', 'content': alltext, 'session_id': session_id})}\n\n"
+                        print('step build card updated')
         
         print('finish build card')
-        card_content = build_card("处理结果", get_current_time(), alltext, True, True)
+        card_content = build_card(alltext, True)
         updateTextCard(app_id, message_id, card_content)
         print('finish build card updated')
         #yield f"data: {json.dumps({'type': 'complete', 'session_id': session_id})}\n\n"
@@ -144,6 +163,6 @@ async def async_bedrock_sendMessage(app_id: str, message_id: str, user_id: str, 
     except Exception as e:
         errmsg = f"Error in stream_response: {str(e)}"
         logging.error(errmsg)
-        card_content = build_card("处理结果", get_current_time(), errmsg, True, True)
+        card_content = build_card(errmsg, True)
         updateTextCard(app_id, message_id, card_content)
         #yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"

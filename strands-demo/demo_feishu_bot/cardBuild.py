@@ -490,9 +490,11 @@ def get_robot_user_model(user_id: str) -> AppCache:
 
 
 # 构建卡片
-def build_card(header: str, time: str, content: str, end: bool, robot: bool) -> str:
+def build_card(content: str, end: bool, tooluse: str = "") -> str:
+    time = get_current_time()
     if content:
-        content = re.sub(r'(?m)^(.*)$', r'**\1**', content)
+        # content = re.sub(r'(?m)^(.*)$', r'**\1**', content)
+        pass
     elif robot:
         card = {
             "elements": [
@@ -519,8 +521,10 @@ def build_card(header: str, time: str, content: str, end: bool, robot: bool) -> 
     if robot:
         if end:
             note = "🤖温馨提示✨✨：输入<帮助> 或 /help 即可获取帮助菜单"
+        elif tooluse != '':
+            note = "🔧 " + tooluse
         else:
-            note = "正在处理中，请稍等..."
+            note = "思考中..."
 
         card = {
             "elements": [
@@ -608,7 +612,7 @@ def build_card(header: str, time: str, content: str, end: bool, robot: bool) -> 
             "header": {
                 "template": "violet",
                 "title": {
-                    "content": header,
+                    "content": "处理结果",
                     "tag": "plain_text"
                 }
             }
@@ -696,7 +700,7 @@ def build_card(header: str, time: str, content: str, end: bool, robot: bool) -> 
         "header": {
             "template": "violet",
             "title": {
-                "content": header,
+                "content": "处理结果",
                 "tag": "plain_text"
             }
         }

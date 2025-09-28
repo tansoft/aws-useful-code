@@ -117,7 +117,7 @@ def message_receive_event_handler(req_data: MessageReceiveEvent):
         if not handle_content.continue_processing:
             return jsonify()
         # 构造首次响应卡片
-        card_content = build_card("处理结果", get_current_time(), "", False, True)
+        card_content = build_card("", False)
         # 回复空卡片消息，并拿到新的message_id
         message_boy = reply_message(app_id, message_id, card_content, "interactive")
         if message_boy.success():
