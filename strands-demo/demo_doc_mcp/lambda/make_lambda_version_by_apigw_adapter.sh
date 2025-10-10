@@ -71,6 +71,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 # 0. 创建IAM角色
 aws iam create-role \
     --role-name $ROLE_NAME \
+    --region us-east-1 \
     --assume-role-policy-document file://trust-policy.json 2>/dev/null || \
     echo "角色已存在，跳过创建"
 
@@ -78,11 +79,13 @@ aws iam create-role \
 aws iam put-role-policy \
     --role-name $ROLE_NAME \
     --policy-name $POLICY_NAME \
+    --region us-east-1 \
     --policy-document file://execution-policy.json || echo '附加策略已经存在，跳过'
 
 # 附加AWS管理的基本执行策略
 aws iam attach-role-policy \
     --role-name $ROLE_NAME \
+    --region us-east-1 \
     --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole || echo '默认策略已经存在，跳过'
 
 # 生成一个函数

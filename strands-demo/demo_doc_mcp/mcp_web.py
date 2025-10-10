@@ -50,7 +50,8 @@ class PromptRequest(BaseModel):
     image: Optional[ImageData] = None
 
 # Initialize components
-bedrock_model = BedrockModel(model_id="apac.anthropic.claude-sonnet-4-20250514-v1:0", region_name="ap-northeast-1")
+# model_id="apac.anthropic.claude-sonnet-4-20250514-v1:0"
+bedrock_model = BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0", region_name="ap-northeast-1")
 aws_doc_client = MCPClient(lambda: streamablehttp_client(url="https://knowledge-mcp.global.api.aws"))
 aws_doc_client.start()
 

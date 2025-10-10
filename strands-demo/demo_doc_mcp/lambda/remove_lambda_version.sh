@@ -15,6 +15,7 @@ fi
 # 读取配置信息
 REGION=$(jq -r '.region' $CONFIG_FILE)
 FUNCTION_NAME=$(jq -r '.function_name' $CONFIG_FILE)
+ROLE_NAME="${FUNCTION_NAME}-role"
 LAYER_NAME=$(jq -r '.layer_name' $CONFIG_FILE)
 API_ID=$(jq -r '.api_id' $CONFIG_FILE)
 DISTRIBUTION_ID=$(jq -r '.distribution_id' $CONFIG_FILE)
@@ -29,13 +30,50 @@ echo "区域: $REGION"
 # 0. 删除Cloudfront
 if [[ "$DISTRIBUTION_ID" != "null" && -n "$DISTRIBUTION_ID" ]]; then
     echo "删除CloudFront分发配置: $DISTRIBUTION_ID"
-    aws cloudfront delete-distribution --region us-east-1 \
-        --id $DISTRIBUTION_ID 2>/dev/null || echo "CloudFront分发配置删除失败或不存在"
+    # 获取当前ETag
+    ETAG=$(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query 'ETag' --output text --region us-east-1)
+    
+    # 先禁用分发
+    DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DISTRIBUTION_ID --region us-east-1)
+    ENABLED=$(echo "$DIST_CONFIG" | jq -r '.DistributionConfig.Enabled')
+    
+    if [ "$ENABLED" = "true" ]; then
+        echo "禁用CloudFront分发..."
+        TEMP_CONFIG=$(echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false')
+        aws cloudfront update-distribution \
+            --id $DISTRIBUTION_ID \
+            --distribution-config "$(echo "$TEMP_CONFIG" | jq -r '.DistributionConfig')" \
+            --region us-east-1 \
+            --if-match "$(echo "$DIST_CONFIG" | jq -r '.ETag')"
+            
+        # 等待分发状态变为Deployed
+        echo "等待分发状态变为Deployed..."
+        while true; do
+            STATUS=$(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query 'Distribution.Status' --output text --region us-east-1)
+            if [ "$STATUS" = "Deployed" ]; then
+                break
+            fi
+            echo "当前状态: $STATUS, 继续等待..."
+            sleep 20
+        done
+    fi
+    
+    # 删除分发
+    echo "删除分发..."
+    ETAG=$(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query 'ETag' --output text --region us-east-1)
+    aws cloudfront delete-distribution \
+        --id $DISTRIBUTION_ID \
+        --region us-east-1 \
+        --if-match "$ETAG" 2>/dev/null || echo "CloudFront分发配置删除失败或不存在"
 fi
 if [[ "$OAC_ID" != "null" && -n "$OAC_ID" ]]; then
     echo "删除OAC配置：$OAC_ID"
+    # 获取OAC的ETag
+    OAC_ETAG=$(aws cloudfront get-origin-access-control --id $OAC_ID --region us-east-1 --query 'ETag' --output text)
+    
     aws cloudfront delete-origin-access-control \
         --id $OAC_ID \
+        --if-match "$OAC_ETAG" \
         --region us-east-1 2>/dev/null || echo "OAC配置删除失败或不存在"
 fi
 
@@ -122,6 +160,13 @@ function delete_layer() {
     local LAYER_NAME=$1
     local REGION=$2
     local version=
+    
+    # Check if input is an ARN
+    if [[ $LAYER_NAME == arn:* ]]; then
+        # Extract layer name from ARN
+        LAYER_NAME=$(echo $LAYER_NAME | cut -d':' -f7)
+    fi
+
     local LAYER_VERSIONS=$(aws lambda list-layer-versions \
         --layer-name $LAYER_NAME \
         --region $REGION \
@@ -145,24 +190,25 @@ function delete_layer() {
 echo "删除Lambda Layer: $LAYER_NAME"
 for pattern in $LAYER_NAME; do
     delete_layer $pattern $REGION
+done
 
 # 5. 删除策略和角色
-aws iam list-role-policies \
-    --role-name $ROLE_NAME \
-    --region $REGION \
-    | jq -r '.PolicyNames[]' \
-    | while read -r policy_name; do
-        echo "删除策略：$policy_name"
-        aws iam delete-role-policy \
-            --role-name $ROLE_NAME \
-            --policy-name $policy_name \
-            --region $REGION 2>/dev/null || echo "策略 $policy_name 删除失败或不存在"
-    done
+echo "Detaching managed policies..."
+for policy_arn in $(aws iam list-attached-role-policies --role-name $ROLE_NAME --query 'AttachedPolicies[].PolicyArn' --output text); do
+  echo "Detaching policy: $policy_arn"
+  aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn $policy_arn
+done
+
+echo "Removing inline policies..."
+for policy_name in $(aws iam list-role-policies --role-name $ROLE_NAME --query 'PolicyNames[]' --output text); do
+  echo "Removing inline policy: $policy_name"
+  aws iam delete-role-policy --role-name $ROLE_NAME --policy-name $policy_name
+done
 
 echo "删除角色：$ROLE_NAME"
 aws iam delete-role \
         --role-name $ROLE_NAME \
-        --region $REGION 2>/dev/null || echo "角色 $ROLE_NAME 删除失败或不存在"
+        --region us-east-1 2>/dev/null || echo "角色 $ROLE_NAME 删除失败或不存在"
 
 # 6. 删除配置文件
 echo "删除配置文件: $CONFIG_FILE"

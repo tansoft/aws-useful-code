@@ -71,6 +71,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 # 0. 创建IAM角色
 aws iam create-role \
     --role-name $ROLE_NAME \
+    --region us-east-1 \
     --assume-role-policy-document file://trust-policy.json 2>/dev/null || \
     echo "角色已存在，跳过创建"
 
@@ -78,11 +79,13 @@ aws iam create-role \
 aws iam put-role-policy \
     --role-name $ROLE_NAME \
     --policy-name $POLICY_NAME \
+    --region us-east-1 \
     --policy-document file://execution-policy.json || echo '附加策略已经存在，跳过'
 
 # 附加AWS管理的基本执行策略
 aws iam attach-role-policy \
     --role-name $ROLE_NAME \
+    --region us-east-1 \
     --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole || echo '默认策略已经存在，跳过'
 
 # 生成一个函数
@@ -241,7 +244,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
                 # 创建Route53验证记录
                 aws route53 change-resource-record-sets \
                     --hosted-zone-id $ROUTE53_ZONEID \
-                    --region us-east-1
+                    --region us-east-1 \
                     --change-batch '{
                         "Changes": [{
                             "Action": "UPSERT",
@@ -318,23 +321,8 @@ cat > /tmp/distribution-config.json << EOF
                 "Items": ["GET", "HEAD"]
             }
         },
-        "ForwardedValues": {
-            "QueryString": true,
-            "Cookies": {
-                "Forward": "all"
-            },
-            "Headers": {
-                "Quantity": 1,
-                "Items": ["*"]
-            }
-        },
-        "TrustedSigners": {
-            "Enabled": false,
-            "Quantity": 0
-        },
-        "MinTTL": 0,
-        "DefaultTTL": 0,
-        "MaxTTL": 86400,
+        "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+        "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
         "Compress": true
     },
     "Origins": {
