@@ -1,4 +1,6 @@
-#!/bin/bash
+_#!/bin/bash
+
+# 使用API GW的版本有两个问题，一是没有streaming流式返回，二是接口30秒会超时，没有返回就会报错。
 
 set -e
 
@@ -48,13 +50,7 @@ VALID_TOKEN=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 18 | head -n 1)
 PYVER=$(python -c 'import sys
 ver = sys.version_info
 print(str(ver.major)+"."+str(ver.minor))')
-# 本机是 x86 还是 arm
-ARCH=$(uname -m)
-if [[ "$ARCH" == "x86_64" ]]; then
-    ADAPTER_ARCH="arn:aws:lambda:$REGION:753240598075:layer:LambdaAdapterLayerX86:25"
-else
-    ADAPTER_ARCH="arn:aws:lambda:$REGION:753240598075:layer:LambdaAdapterLayerArm64:24"
-fi
+ACM_REGION=$REGION
 
 echo "开始部署到区域: $REGION"
 if [[ -n "$DOMAIN_NAME" ]]; then
@@ -131,16 +127,23 @@ function make_layer() {
 # 1. 创建Lambda Layer
 # 单layer超过 70M，分为多个layer，--no-deps xxx
 # LAYER_ARN=$(make_layer $FUNCTION_NAME-layer $REGION $PYVER $TEMP_DIR -r ../requirements.txt)
-echo "制作fastapi unicorn层..."
-LAYER_ARN1=$(make_layer fastapi-uvicorn-jinja2 $REGION $PYVER $TEMP_DIR fastapi uvicorn jinja2)
+echo "制作web框架层..."
+LAYER_ARN1=$(make_layer fastapi-mangum-jinja2 $REGION $PYVER $TEMP_DIR fastapi mangum jinja2)
 echo "Lambda Layer: $LAYER_ARN1"
-echo "制作strands-agents层..."
+echo "制作agent层..."
 LAYER_ARN2=$(make_layer strands-agents $REGION $PYVER $TEMP_DIR strands-agents strands-agents-tools)
 echo "Lambda Layer: $LAYER_ARN2"
 
 # 2. 准备Lambda代码
 echo "准备Lambda代码..."
 cp -r ../static ../templates ../mcp_web.py run.sh $TEMP_DIR/
+sed -i '1i from mangum import Mangum' $TEMP_DIR/mcp_web.py
+echo '
+asgi_handler = Mangum(app)
+
+def handler(event, context):
+    return asgi_handler(event, context)
+' >> $TEMP_DIR/mcp_web.py
 touch $TEMP_DIR/__init__.py
 cd $TEMP_DIR
 zip -r function.zip . -x "python/*"
@@ -151,13 +154,13 @@ FUNCTION_ARN=$(aws lambda create-function \
     --function-name $FUNCTION_NAME \
     --runtime python$PYVER \
     --role arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/$ROLE_NAME \
-    --handler run.sh \
+    --handler mcp_web.handler \
     --zip-file fileb://function.zip \
     --timeout 300 \
     --memory-size 256 \
-    --layers "$LAYER_ARN1" "$LAYER_ARN2" "$ADAPTER_ARCH" \
+    --layers "$LAYER_ARN1" "$LAYER_ARN2" \
     --region $REGION \
-    --environment Variables="{AWS_LAMBDA_EXEC_WRAPPER='/opt/bootstrap',AWS_LWA_INVOKE_MODE='response_stream',PORT=9000,VALID_TOKEN=$VALID_TOKEN,OTEL_SDK_DISABLED=true,SESSION_DIR=/tmp/sessions}" \
+    --environment Variables="{VALID_TOKEN=$VALID_TOKEN,OTEL_SDK_DISABLED=true,SESSION_DIR=/tmp/sessions}" \
     --query 'FunctionArn' --output text 2>/dev/null || \
 aws lambda update-function-code \
         --function-name $FUNCTION_NAME \
@@ -270,7 +273,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
     echo "配置自定义域名: $DOMAIN_NAME"
     # 判断是否已经有该域名的ACM证书
     EXISTING_CERT_ARN=$(aws acm list-certificates \
-        --region $REGION \
+        --region $ACM_REGION \
         --query "CertificateSummaryList[?DomainName=='$DOMAIN_NAME'].CertificateArn" \
         --output text)
 
@@ -282,7 +285,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
         CERT_ARN=$(aws acm request-certificate \
             --domain-name $DOMAIN_NAME \
             --validation-method DNS \
-            --region $REGION \
+            --region $ACM_REGION \
             --query 'CertificateArn' --output text)
     fi
 
@@ -290,7 +293,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
         # 获取证书状态
         CERT_STATUS=$(aws acm describe-certificate \
             --certificate-arn $CERT_ARN \
-            --region $REGION \
+            --region $ACM_REGION \
             --query 'Certificate.Status' \
             --output text)
 
@@ -300,7 +303,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
             # 获取证书验证记录
             CERT_VALIDATION=$(aws acm describe-certificate \
                 --certificate-arn $CERT_ARN \
-                --region $REGION \
+                --region $ACM_REGION \
                 --query 'Certificate.DomainValidationOptions[0].ResourceRecord' \
                 --output text)
 
@@ -313,6 +316,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
                 # 创建Route53验证记录
                 aws route53 change-resource-record-sets \
                     --hosted-zone-id $ROUTE53_ZONEID \
+                    --region us-east-1 \
                     --change-batch '{
                         "Changes": [{
                             "Action": "UPSERT",
@@ -332,7 +336,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
                 # 等待证书验证完成
                 aws acm wait certificate-validated \
                     --certificate-arn $CERT_ARN \
-                    --region $REGION
+                    --region $ACM_REGION
                     
                 echo "证书验证完成"
             fi
@@ -382,6 +386,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
         # 检查Route53上是否存在该域名的记录
         EXISTING_RECORD=$(aws route53 list-resource-record-sets \
             --hosted-zone-id $ROUTE53_ZONEID \
+            --region us-east-1 \
             --query "ResourceRecordSets[?Name=='${DOMAIN_NAME}.'].Name" \
             --output text)
 
@@ -443,6 +448,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
             # 创建Route53别名记录
             aws route53 change-resource-record-sets \
                 --hosted-zone-id $ROUTE53_ZONEID \
+                --region us-east-1 \
                 --change-batch '{
                     "Changes": [{
                         "Action": "UPSERT",
@@ -485,9 +491,7 @@ cat > deployment_info.json << EOF
     "region": "$REGION",
     "function_name": "$FUNCTION_NAME",
     "layer_name": "$LAYER_ARN1 $LAYER_ARN2",
-    "api_name": "$API_NAME",
     "api_id": "$API_ID",
-    "api_endpoint": "$API_ENDPOINT",
     "domain_name": "$DOMAIN_NAME",
     "cert_arn": "${CERT_ARN:-}",
     "zone_id": "${ROUTE53_ZONEID}"

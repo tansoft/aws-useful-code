@@ -16,8 +16,9 @@ fi
 REGION=$(jq -r '.region' $CONFIG_FILE)
 FUNCTION_NAME=$(jq -r '.function_name' $CONFIG_FILE)
 LAYER_NAME=$(jq -r '.layer_name' $CONFIG_FILE)
-API_NAME=$(jq -r '.api_name' $CONFIG_FILE)
 API_ID=$(jq -r '.api_id' $CONFIG_FILE)
+DISTRIBUTION_ID=$(jq -r '.distribution_id' $CONFIG_FILE)
+OAC_ID=$(jq -r '.oac_id' $CONFIG_FILE)
 DOMAIN_NAME=$(jq -r '.domain_name' $CONFIG_FILE)
 CERT_ARN=$(jq -r '.cert_arn' $CONFIG_FILE)
 ROUTE53_ZONEID=$(jq -r '.zone_id' $CONFIG_FILE)
@@ -25,22 +26,41 @@ ROUTE53_ZONEID=$(jq -r '.zone_id' $CONFIG_FILE)
 echo "开始清理部署资源..."
 echo "区域: $REGION"
 
+# 0. 删除Cloudfront
+if [[ "$DISTRIBUTION_ID" != "null" && -n "$DISTRIBUTION_ID" ]]; then
+    echo "删除CloudFront分发配置: $DISTRIBUTION_ID"
+    aws cloudfront delete-distribution --region us-east-1 \
+        --id $DISTRIBUTION_ID 2>/dev/null || echo "CloudFront分发配置删除失败或不存在"
+fi
+if [[ "$OAC_ID" != "null" && -n "$OAC_ID" ]]; then
+    echo "删除OAC配置：$OAC_ID"
+    aws cloudfront delete-origin-access-control \
+        --id $OAC_ID \
+        --region us-east-1 2>/dev/null || echo "OAC配置删除失败或不存在"
+fi
+
 # 1. 删除自定义域名配置（如果存在）
 if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
     echo "删除自定义域名配置: $DOMAIN_NAME"
-    
-    # 删除API映射
-    echo "删除API映射..."
-    aws apigatewayv2 delete-api-mapping \
-        --domain-name $DOMAIN_NAME \
-        --api-mapping-id $(aws apigatewayv2 get-api-mappings --domain-name $DOMAIN_NAME --region $REGION --query 'Items[0].ApiMappingId' --output text) \
-        --region $REGION 2>/dev/null || echo "API映射删除失败或不存在"
-    
-    # 删除域名
-    echo "删除API GW自定义域名..."
-    aws apigatewayv2 delete-domain-name \
-        --domain-name $DOMAIN_NAME \
-        --region $REGION 2>/dev/null || echo "域名删除失败或不存在"
+
+    if [[ "$API_ID" != "null" && -n "$API_ID" ]]; then
+        # 删除API映射
+        echo "删除API映射..."
+        aws apigatewayv2 delete-api-mapping \
+            --domain-name $DOMAIN_NAME \
+            --api-mapping-id $(aws apigatewayv2 get-api-mappings --domain-name $DOMAIN_NAME --region $REGION --query 'Items[0].ApiMappingId' --output text) \
+            --region $REGION 2>/dev/null || echo "API映射删除失败或不存在"
+        
+        # 删除域名
+        echo "删除API GW自定义域名..."
+        aws apigatewayv2 delete-domain-name \
+            --domain-name $DOMAIN_NAME \
+            --region $REGION 2>/dev/null || echo "域名删除失败或不存在"
+        
+        ACM_REGION=$REGION
+    else
+        ACM_REGION=us-east-1
+    fi
 
     # 删除ACM证书
     if [[ "$CERT_ARN" != "null" && -n "$CERT_ARN" ]]; then
@@ -50,11 +70,13 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
             echo "删除域名记录..."
             aws route53 list-resource-record-sets \
                 --hosted-zone-id $ROUTE53_ZONEID \
+                --region us-east-1 \
                 --query "ResourceRecordSets[?Name == '$DOMAIN_NAME.']" \
                 | jq -c '.[]' \
                 | while read -r record; do
                     aws route53 change-resource-record-sets \
                         --hosted-zone-id $ROUTE53_ZONEID \
+                        --region us-east-1 \
                         --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record}]}" \
                         2>/dev/null || echo "Route53记录删除失败或不存在"
             done
@@ -63,11 +85,13 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
             echo "删除ACM验证记录..."
             aws route53 list-resource-record-sets \
                 --hosted-zone-id $ROUTE53_ZONEID \
+                --region us-east-1 \
                 --query "ResourceRecordSets[?contains(Name, '_acm-challenge')]" \
                 | jq -c '.[]' \
                 | while read -r record; do
                     aws route53 change-resource-record-sets \
                         --hosted-zone-id $ROUTE53_ZONEID \
+                        --region us-east-1 \
                         --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record}]}" \
                         2>/dev/null || echo "ACM验证记录删除失败或不存在"
             done
@@ -76,7 +100,7 @@ if [[ "$DOMAIN_NAME" != "null" && -n "$DOMAIN_NAME" ]]; then
         echo "删除证书..."
         aws acm delete-certificate \
             --certificate-arn $CERT_ARN \
-            --region $REGION 2>/dev/null || echo "证书删除失败或不存在"
+            --region $ACM_REGION 2>/dev/null || echo "证书删除失败或不存在"
     fi
 fi
 

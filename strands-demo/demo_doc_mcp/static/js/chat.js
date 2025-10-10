@@ -569,14 +569,31 @@ document.addEventListener('DOMContentLoaded', function () {
             clearImagePreview();
         }
         
-        fetch(`./api/chat_stream?token=${token}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal
-        })
+        async function sha256(message) {
+        // 将字符串转换为 Uint8Array
+        const msgBuffer = new TextEncoder().encode(message);
+        
+        // 使用 SubtleCrypto API 计算哈希值
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        
+        // 将 ArrayBuffer 转换为十六进制字符串
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        return hashHex;
+        }
+
+        const bodyCnt = JSON.stringify(requestBody)
+        sha256(bodyCnt).then(hash => {
+            fetch(`./api/chat_stream?token=${token}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-amz-content-sha256': hash,
+                },
+                body: bodyCnt,
+                signal: controller.signal
+            })
             .then(response => {
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -653,6 +670,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 streamingContent.innerHTML = `<div class="error">${errorMessage}</div>`;
                 console.error('Error:', error);
             });
+        });
     }
 
     // 处理流式数据

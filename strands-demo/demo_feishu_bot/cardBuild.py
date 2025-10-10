@@ -4,7 +4,7 @@ import lark_oapi as lark
 
 from exts import cache
 from model import AppCache
-
+from api import get_current_time
 
 # 构建模型切换卡片
 def model_select_card_build(user_id: str) -> str:
@@ -492,6 +492,7 @@ def get_robot_user_model(user_id: str) -> AppCache:
 # 构建卡片
 def build_card(content: str, end: bool, tooluse: str = "") -> str:
     time = get_current_time()
+    robot = True
     if content:
         # content = re.sub(r'(?m)^(.*)$', r'**\1**', content)
         pass
