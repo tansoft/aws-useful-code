@@ -56,7 +56,7 @@ Resources:
           - Id: DeleteOldLogs
             Status: Enabled
             ExpirationInDays: !Ref LogsRetainDays
-            Prefix: /flowlogs/
+            Prefix: /
 
   # DynamoDB表
   IpTable:
@@ -124,6 +124,61 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
+  # Lambda 函数用于获取 NAT Gateway 的 ENI ID
+  GetNatGatewayEniFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+            if event['RequestType'] == 'Delete':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              return
+            nat_gateway_id = event['ResourceProperties']['NatGatewayId']            
+            try:
+              ec2 = boto3.client('ec2')
+              response = ec2.describe_nat_gateways(NatGatewayIds=[nat_gateway_id])
+              if response['NatGateways'] and len(response['NatGateways']) > 0:
+                nat_gateway = response['NatGateways'][0]
+                if 'NatGatewayAddresses' in nat_gateway and len(nat_gateway['NatGatewayAddresses']) > 0:
+                  network_interface_id = nat_gateway['NatGatewayAddresses'][0]['NetworkInterfaceId']
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {'NetworkInterfaceId': network_interface_id})
+                  return
+              cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': 'Could not find ENI for NAT Gateway'})
+            except Exception as e:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  # 自定义资源调用 Lambda 函数
+  GetNatGatewayEni:
+    Type: Custom::GetNatGatewayEni
+    Properties:
+      ServiceToken: !GetAtt GetNatGatewayEniFunction.Arn
+      NatGatewayId: !Ref NatGwId
+
+  # 为 NAT Gateway 创建 VPC Flow Log
+  NatGatewayFlowLog:
+    Type: AWS::EC2::FlowLog
+    DependsOn: GetNatGatewayEni
+    Properties:
+      ResourceId: !GetAtt GetNatGatewayEni.NetworkInterfaceId
+      ResourceType: NetworkInterface
+      TrafficType: ALL
+      LogDestinationType: s3
+      LogDestination: !GetAtt FlowLogBucket.Arn
+      DestinationOptions:
+        FileFormat: parquet
+        HiveCompatiblePartitions: true
+        PerHourPartition: true
+      MaxAggregationInterval: 60
+      LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
+
   # Lambda函数
   TrafficAnalysisFunction:
     Type: AWS::Lambda::Function
@@ -138,7 +193,7 @@ Resources:
           DYNAMODB_TABLE: !Ref IpTable
           SNS_TOPIC_ARN: !Ref NotificationTopic
           S3_BUCKET: !Ref FlowLogBucket
-          S3_PREFIX: /flowlogs/
+          S3_PREFIX: /
           THRESHOLD_MBPS: !Ref OutDataAlertThreshold
       Code:
         ZipFile: |
@@ -165,31 +220,6 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt ScheduleRule.Arn
-
-  # VPC Flow Logs
-  FlowLogsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: vpc-flow-logs.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: FlowLogsDeliveryRolePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:GetBucketAcl
-                  - s3:ListBucket
-                Resource:
-                  - !Sub 'arn:aws:s3:::${FlowLogBucket}/*'
-                  - !Sub 'arn:aws:s3:::${FlowLogBucket}'
 
   # CloudWatch报警
   NatGwOutboundTrafficAlarm:
@@ -226,3 +256,11 @@ Outputs:
   S3BucketName:
     Description: S3存储桶名
     Value: !Ref FlowLogBucket
+
+  NatGatewayEniId:
+    Description: The ENI ID of the NAT Gateway
+    Value: !GetAtt GetNatGatewayEni.NetworkInterfaceId
+
+  FlowLogId:
+    Description: The ID of the Flow Log
+    Value: !Ref NatGatewayFlowLog
