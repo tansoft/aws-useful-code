@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NAT Gateway Security Monitor'
+
+Parameters:
+  NatGwId:
+    Type: String
+    Description: NAT Gateway ID
+    Default: nat-xxxxxx
+  
+  RefreshInterval:
+    Type: Number
+    Description: 汇总计算间隔(分钟)
+    Default: 5
+    MinValue: 2
+    MaxValue: 60
+  
+  OutDataAlertThreshold:
+    Type: Number
+    Description: 出流量报警阈值(MB/s)
+    Default: 30
+
+  NotifyEmail:
+    Type: String
+    Description: 报警通知邮箱
+    Default: abc@mail.com
+  
+  LogsRetainDays:
+    Type: Number
+    Description: 原始日志保存天数
+    Default: 7
+    MinValue: 1
+    MaxValue: 365
+
+Resources:
+  # SNS主题和邮件订阅
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-notify'
+      DisplayName: NAT Gateway Security Monitor Notifications
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref NotificationTopic
+      Endpoint: !Ref NotifyEmail
+
+  # S3存储桶
+  FlowLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-flowlogs-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: !Ref LogsRetainDays
+            Prefix: /flowlogs/
+
+  # DynamoDB表
+  IpTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-iptable'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: cidr
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cidr
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # IAM角色
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: NatGwMonitorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt IpTable.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref NotificationTopic
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${FlowLogBucket}/*'
+                  - !Sub 'arn:aws:s3:::${FlowLogBucket}'
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeNatGateways
+                  - ec2:CreateFlowLogs
+                  - ec2:DescribeFlowLogs
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Lambda函数
+  TrafficAnalysisFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-traffic-analysis'
+      Runtime: python3.9
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref IpTable
+          SNS_TOPIC_ARN: !Ref NotificationTopic
+          S3_BUCKET: !Ref FlowLogBucket
+          S3_PREFIX: /flowlogs/
+          THRESHOLD_MBPS: !Ref OutDataAlertThreshold
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': json.dumps('Function created, code will be updated separately')}
+
+  # EventBridge规则
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: 定期触发流量分析Lambda
+      ScheduleExpression: !Sub 'rate(${RefreshInterval} minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt TrafficAnalysisFunction.Arn
+          Id: TrafficAnalysisTarget
+
+  # Lambda权限
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TrafficAnalysisFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleRule.Arn
+
+  # VPC Flow Logs
+  FlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FlowLogsDeliveryRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketAcl
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${FlowLogBucket}/*'
+                  - !Sub 'arn:aws:s3:::${FlowLogBucket}'
+
+  # CloudWatch报警
+  NatGwOutboundTrafficAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'NatGw-${NatGwId}-OutboundTraffic'
+      AlarmDescription: NAT Gateway出站流量报警
+      MetricName: BytesOutToDestination
+      Namespace: AWS/NatGateway
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref OutDataAlertThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: NatGatewayId
+          Value: !Ref NatGwId
+      AlarmActions:
+        - !Ref NotificationTopic
+
+Outputs:
+  SNSTopicArn:
+    Description: SNS主题ARN
+    Value: !Ref NotificationTopic
+
+  DynamoDBTableName:
+    Description: DynamoDB表名
+    Value: !Ref IpTable
+
+  LambdaFunctionName:
+    Description: Lambda函数名
+    Value: !Ref TrafficAnalysisFunction
+
+  S3BucketName:
+    Description: S3存储桶名
+    Value: !Ref FlowLogBucket
