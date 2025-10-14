@@ -44,6 +44,8 @@ done
 API_NAME="${FUNCTION_NAME}-api"
 ROLE_NAME="${FUNCTION_NAME}-role"
 POLICY_NAME="${FUNCTION_NAME}-policy"
+ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+S3_BUCKET="strands-session-${FUNCTION_NAME}-${ACCOUNT_ID}"
 # 用于访问授权
 VALID_TOKEN=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 18 | head -n 1)
 # 本机python版本，用于lambda制作
@@ -152,6 +154,14 @@ cd $TEMP_DIR
 zip -r function.zip . -x "python/*"
 
 # 3. 创建Lambda函数 lambda_function.lambda_handler
+if aws s3 ls "s3://$S3_BUCKET" --region $REGION >/dev/null 2>&1; then
+    echo "S3桶 $S3_BUCKET 已经创建"
+else
+    echo "创建保存session的S3桶 $S3_BUCKET"
+    # 兼容美东一的创建s3桶方法
+    ([ "$REGION" == "us-east-1" ] && aws s3api create-bucket --bucket "$S3_BUCKET" --region $REGION || aws s3api create-bucket --bucket "$S3_BUCKET" --region $REGION --create-bucket-configuration LocationConstraint="$REGION")
+fi
+
 echo "创建/更新Lambda函数..."
 FUNCTION_ARN=$(aws lambda create-function \
     --function-name $FUNCTION_NAME \
@@ -163,7 +173,7 @@ FUNCTION_ARN=$(aws lambda create-function \
     --memory-size 256 \
     --layers "$LAYER_ARN1" "$LAYER_ARN2" "$ADAPTER_ARCH" \
     --region $REGION \
-    --environment Variables="{AWS_LAMBDA_EXEC_WRAPPER='/opt/bootstrap',AWS_LWA_INVOKE_MODE='response_stream',PORT=9000,VALID_TOKEN=$VALID_TOKEN,OTEL_SDK_DISABLED=true,SESSION_DIR=/tmp/sessions}" \
+    --environment Variables="{AWS_LAMBDA_EXEC_WRAPPER='/opt/bootstrap',AWS_LWA_INVOKE_MODE='response_stream',PORT=9000,VALID_TOKEN=$VALID_TOKEN,OTEL_SDK_DISABLED=true,SESSION_DIR=s3://$S3_BUCKET}/" \
     --query 'FunctionArn' --output text 2>/dev/null || \
 aws lambda update-function-code \
         --function-name $FUNCTION_NAME \
@@ -414,7 +424,6 @@ fi
 
 # 6. 为 Lambda 添加 CloudFront 调用权限
 echo "添加 CloudFront 调用权限..."
-ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
 DISTRIBUTION_ARN="arn:aws:cloudfront::$ACCOUNT_ID:distribution/$DISTRIBUTION_ID"
 echo "DISTRIBUTION_ID: ${DISTRIBUTION_ID}"
 
@@ -450,6 +459,7 @@ cat > deployment_info.json << EOF
 {
     "region": "$REGION",
     "function_name": "$FUNCTION_NAME",
+    "s3_bucket": "$S3_BUCKET",
     "layer_name": "$LAYER_ARN1 $LAYER_ARN2",
     "distribution_id": "$DISTRIBUTION_ID",
     "oac_id": "$OAC_ID",

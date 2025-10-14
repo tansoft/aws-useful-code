@@ -15,6 +15,7 @@ fi
 # 读取配置信息
 REGION=$(jq -r '.region' $CONFIG_FILE)
 FUNCTION_NAME=$(jq -r '.function_name' $CONFIG_FILE)
+S3_BUCKET=$(jq -r '.s3_bucket' $CONFIG_FILE)
 ROLE_NAME="${FUNCTION_NAME}-role"
 LAYER_NAME=$(jq -r '.layer_name' $CONFIG_FILE)
 API_ID=$(jq -r '.api_id' $CONFIG_FILE)
@@ -155,6 +156,12 @@ echo "删除Lambda函数: $FUNCTION_NAME"
 aws lambda delete-function \
     --function-name $FUNCTION_NAME \
     --region $REGION 2>/dev/null || echo "Lambda函数删除失败或不存在"
+# 删除s3 session bucket
+if [[ "$S3_BUCKET" != "null" && -n "$S3_BUCKET" ]]; then
+    echo "删除 s3 session bucket: $S3_BUCKET"
+    aws s3 rm s3://$S3_BUCKET --recursive --region $REGION
+    aws s3 rb s3://$S3_BUCKET --force --region $REGION
+fi
 
 function delete_layer() {
     local LAYER_NAME=$1

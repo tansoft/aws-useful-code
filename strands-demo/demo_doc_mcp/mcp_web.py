@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from strands import Agent
 from strands.models import BedrockModel
-from strands.session import FileSessionManager
+from strands.session import FileSessionManager, S3SessionManager
 from strands_tools import http_request, current_time
 from strands.tools.mcp import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
@@ -36,7 +36,11 @@ class CachedStaticFiles(StaticFiles):
 
 # Initialize session directory
 SESSION_DIR = os.environ.get("SESSION_DIR", os.path.join(os.path.dirname(__file__), "sessions"))
-os.makedirs(SESSION_DIR, exist_ok=True)
+VALID_TOKEN = os.environ.get("VALID_TOKEN", "secret_token")
+# "apac.anthropic.claude-sonnet-4-20250514-v1:0"
+MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+REGION_NAME = os.environ.get("REGION_NAME", "ap-northeast-1")
+PORT=int(os.environ.get("PORT", "9000"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,8 +48,6 @@ async def lifespan(app: FastAPI):
     aws_doc_client.stop(None, None, None)
 
 app = FastAPI(lifespan=lifespan)
-
-VALID_TOKEN = os.environ.get("VALID_TOKEN", "secret_token")
 
 def validate_token(request: Request):
     if request.query_params.get('token') != VALID_TOKEN:
@@ -61,8 +63,7 @@ class PromptRequest(BaseModel):
     image: Optional[ImageData] = None
 
 # Initialize components
-# model_id="apac.anthropic.claude-sonnet-4-20250514-v1:0"
-bedrock_model = BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0", region_name="ap-northeast-1")
+bedrock_model = BedrockModel(model_id=MODEL_ID, region_name=REGION_NAME)
 aws_doc_client = MCPClient(lambda: streamablehttp_client(url="https://knowledge-mcp.global.api.aws"))
 aws_doc_client.start()
 
@@ -89,10 +90,17 @@ async def stream_response(request: PromptRequest, raw_request: Request):
             if not request.session_id:
                 yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
 
-            session_manager = FileSessionManager(session_id=session_id, storage_dir=SESSION_DIR)
-            # Ensure any async initialization is completed
-            if hasattr(session_manager, '_load_messages_concurrently'):
-                await session_manager._load_messages_concurrently()
+            # Choose session manager based on environment variable
+            if SESSION_DIR.startswith("s3://"):
+                s3_path = SESSION_DIR[5:].split('/', 1)
+                bucket = s3_path[0]
+                path = s3_path[1] if len(s3_path) > 1 else ""
+                session_manager = S3SessionManager(session_id=session_id,
+                    bucket=bucket, prefix=path, region_name=REGION_NAME)
+            else:
+                os.makedirs(SESSION_DIR, exist_ok=True)
+                session_manager = FileSessionManager(session_id=session_id, storage_dir=SESSION_DIR)
+
             conversation_manager = SummarizingConversationManager(summary_ratio=0.3, preserve_recent_messages=6)
 
             agent = Agent(
@@ -183,4 +191,4 @@ async def stream_response(request: PromptRequest, raw_request: Request):
     )
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "9000")), timeout_keep_alive=120)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, timeout_keep_alive=120)
