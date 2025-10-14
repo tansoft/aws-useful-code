@@ -4,7 +4,7 @@ import os
 import uuid
 import base64
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -22,6 +22,17 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logging.getLogger("strands").setLevel(logging.WARNING)
+
+# Custom StaticFiles class with cache headers
+class CachedStaticFiles(StaticFiles):
+    def __init__(self, *args, **kwargs):
+        self.cache_max_age = kwargs.pop('cache_max_age', 604800)  # Default 7 days
+        super().__init__(*args, **kwargs)
+    
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = f"public, max-age={self.cache_max_age}"
+        return response
 
 # Initialize session directory
 SESSION_DIR = os.environ.get("SESSION_DIR", os.path.join(os.path.dirname(__file__), "sessions"))
@@ -56,7 +67,7 @@ aws_doc_client = MCPClient(lambda: streamablehttp_client(url="https://knowledge-
 aws_doc_client.start()
 
 templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", CachedStaticFiles(directory="static", cache_max_age=604800), name="static")
 
 @app.get("/")
 async def read_root(request: Request):
@@ -79,6 +90,9 @@ async def stream_response(request: PromptRequest, raw_request: Request):
                 yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
 
             session_manager = FileSessionManager(session_id=session_id, storage_dir=SESSION_DIR)
+            # Ensure any async initialization is completed
+            if hasattr(session_manager, '_load_messages_concurrently'):
+                await session_manager._load_messages_concurrently()
             conversation_manager = SummarizingConversationManager(summary_ratio=0.3, preserve_recent_messages=6)
 
             agent = Agent(
