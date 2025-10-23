@@ -10,7 +10,7 @@ Parameters:
   RefreshInterval:
     Type: Number
     Description: 汇总计算间隔(分钟)
-    Default: 5
+    Default: 10
     MinValue: 2
     MaxValue: 60
   
@@ -49,6 +49,8 @@ Resources:
   # S3存储桶
   FlowLogBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       BucketName: !Sub '${AWS::StackName}-flowlogs-${AWS::AccountId}'
       LifecycleConfiguration:
@@ -65,10 +67,10 @@ Resources:
       TableName: !Sub '${AWS::StackName}-iptable'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: cidr
+        - AttributeName: ip
           AttributeType: S
       KeySchema:
-        - AttributeName: cidr
+        - AttributeName: ip
           KeyType: HASH
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
@@ -105,8 +107,13 @@ Resources:
                 Resource: !Ref NotificationTopic
               - Effect: Allow
                 Action:
+                  - s3:GetBucketLocation
                   - s3:GetObject
                   - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:ListMultipartUploadParts
+                  - s3:AbortMultipartUpload
+                  - s3:PutObject
                 Resource:
                   - !Sub 'arn:aws:s3:::${FlowLogBucket}/*'
                   - !Sub 'arn:aws:s3:::${FlowLogBucket}'
@@ -116,6 +123,14 @@ Resources:
                   - ec2:DescribeNatGateways
                   - ec2:CreateFlowLogs
                   - ec2:DescribeFlowLogs
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                  - athena:GetNamedQuery
+                  - athena:ListNamedQueries
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -165,7 +180,7 @@ Resources:
   # 为 NAT Gateway 创建 VPC Flow Log
   NatGatewayFlowLog:
     Type: AWS::EC2::FlowLog
-    DependsOn: GetNatGatewayEni
+    DependsOn: [GetNatGatewayEni, FlowLogBucket]
     Properties:
       ResourceId: !GetAtt GetNatGatewayEni.NetworkInterfaceId
       ResourceType: NetworkInterface
@@ -176,7 +191,7 @@ Resources:
         FileFormat: parquet
         HiveCompatiblePartitions: true
         PerHourPartition: true
-      MaxAggregationInterval: 60
+      MaxAggregationInterval: 600
       LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
 
   # Lambda函数
@@ -240,6 +255,184 @@ Resources:
       AlarmActions:
         - !Ref NotificationTopic
 
+  # Athena 工作组
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-workgroup'
+      Description: 'WorkGroup for NAT Gateway Flow Logs analysis'
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${FlowLogBucket}/athena_query_result/'
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        BytesScannedCutoffPerQuery: 1073741824  # 1GB
+
+  # Athena 数据库
+  AthenaDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub '${AWS::StackName}-db'
+        Description: 'Database for NAT Gateway Flow Logs analysis'
+
+  # Athena 表创建查询
+  # s3://xxx/AWSLogs/aws-account-id=xxx/aws-service=vpcflowlogs/aws-region=ap-northeast-1/year=2025/month=10/day=11/hour=06/xxx_vpcflowlogs_ap-northeast-1_fl-006d753xxx_20251011T0650Z_1338b62c.log.parquet
+  AthenaTableCreationQuery:
+    Type: AWS::Athena::NamedQuery
+    DependsOn: AthenaDatabase
+    Properties:
+      Database: !Sub '${AWS::StackName}-db'
+      Name: !Sub '${AWS::StackName}-create-flow-logs-table'
+      Description: 'Create table for VPC Flow Logs'
+      QueryString: !Sub |
+        CREATE EXTERNAL TABLE IF NOT EXISTS vpc_flow_logs (
+          `version` int,
+          account_id string,
+          interface_id string,
+          srcaddr string,
+          dstaddr string,
+          srcport int,
+          dstport int,
+          protocol int,
+          packets int,
+          bytes bigint,
+          `start` bigint,
+          `end` bigint,
+          action string,
+          log_status string
+        )
+        PARTITIONED BY (
+          `year` string,
+          `month` string,
+          `day` string,
+          `hour` string
+        )
+        STORED AS PARQUET
+        LOCATION 's3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/'
+        TBLPROPERTIES (
+          'has_encrypted_data'='false',
+          'projection.enabled'='true',
+          'projection.year.type'='integer',
+          'projection.year.range'='2025,2099',
+          'projection.year.digits'='4',
+          'projection.month.type'='integer',
+          'projection.month.range'='1,12',
+          'projection.month.digits'='2',
+          'projection.day.type'='integer',
+          'projection.day.range'='1,31',
+          'projection.day.digits'='2',
+          'projection.hour.type'='integer',
+          'projection.hour.range'='0,23',
+          'projection.hour.digits'='2',
+          'storage.location.template'='s3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/year=${!}{year}/month=${!}{month}/day=${!}{day}/hour=${!}{hour}/'
+        );
+      WorkGroup: !Ref AthenaWorkGroup
+
+  # 常用分析查询示例
+  AthenaTopSourcesQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database: !Sub '${AWS::StackName}-db'
+      Name: !Sub '${AWS::StackName}-top-sources'
+      Description: 'Top 10 source IPs by traffic volume'
+      QueryString: !Sub |
+        SELECT
+          srcaddr,
+          SUM(bytes) as total_bytes,
+          COUNT(*) as connection_count
+        FROM
+          vpc_flow_logs
+        WHERE
+          interface_id = '${GetNatGatewayEni.NetworkInterfaceId}'
+          AND action = 'ACCEPT'
+        GROUP BY
+          srcaddr
+        ORDER BY
+          total_bytes DESC
+        LIMIT 10;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  AthenaTopDestinationsQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database: !Sub '${AWS::StackName}-db'
+      Name: !Sub '${AWS::StackName}-top-destinations'
+      Description: 'Top 10 destination IPs by traffic volume'
+      QueryString: !Sub |
+        SELECT
+          dstaddr,
+          SUM(bytes) as total_bytes,
+          COUNT(*) as connection_count
+        FROM
+          vpc_flow_logs
+        WHERE
+          interface_id = '${GetNatGatewayEni.NetworkInterfaceId}'
+          AND action = 'ACCEPT'
+        GROUP BY
+          dstaddr
+        ORDER BY
+          total_bytes DESC
+        LIMIT 10;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  AthenaTopDestCClassQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database: !Sub '${AWS::StackName}-db'
+      Name: !Sub '${AWS::StackName}-top-dest-c-class'
+      Description: 'Top 10 dest C-Class IPs by traffic volume'
+      QueryString: !Sub |
+        SELECT
+          concat(regexp_extract(dstaddr, '(\d+\.\d+\.\d+)\.\d+', 1), '.0/24') AS dstaddr_c_class,
+          SUM(bytes) as total_bytes,
+          COUNT(*) as connection_count
+        FROM
+          vpc_flow_logs
+        WHERE
+          interface_id = '${GetNatGatewayEni.NetworkInterfaceId}'
+          AND action = 'ACCEPT'
+          AND NOT regexp_like(dstaddr, '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|169\.254\.)')
+        GROUP BY
+          concat(regexp_extract(dstaddr, '(\d+\.\d+\.\d+)\.\d+', 1), '.0/24')
+        ORDER BY
+          total_bytes DESC
+        LIMIT 10;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  AthenaTopPortsQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database: !Sub '${AWS::StackName}-db'
+      Name: !Sub '${AWS::StackName}-top-ports'
+      Description: 'Top 10 destination ports by traffic volume'
+      QueryString: !Sub |
+        SELECT
+          dstport,
+          CASE
+            WHEN dstport = 80 THEN 'HTTP'
+            WHEN dstport = 443 THEN 'HTTPS'
+            WHEN dstport = 22 THEN 'SSH'
+            WHEN dstport = 3389 THEN 'RDP'
+            WHEN dstport = 53 THEN 'DNS'
+            ELSE CAST(dstport AS VARCHAR)
+          END as service,
+          SUM(bytes) as total_bytes,
+          COUNT(*) as connection_count
+        FROM
+          vpc_flow_logs
+        WHERE
+          interface_id = '${GetNatGatewayEni.NetworkInterfaceId}'
+          AND action = 'ACCEPT'
+        GROUP BY
+          dstport
+        ORDER BY
+          total_bytes DESC
+        LIMIT 10;
+      WorkGroup: !Ref AthenaWorkGroup
+
 Outputs:
   SNSTopicArn:
     Description: SNS主题ARN
@@ -264,3 +457,15 @@ Outputs:
   FlowLogId:
     Description: The ID of the Flow Log
     Value: !Ref NatGatewayFlowLog
+
+  AthenaWorkGroupName:
+    Description: Athena WorkGroup Name
+    Value: !Ref AthenaWorkGroup
+
+  AthenaConsoleLink:
+    Description: Link to Athena Console with predefined queries
+    Value: !Sub 'https://console.aws.amazon.com/athena/home?region=${AWS::Region}#/workgroups/${AthenaWorkGroup}'
+
+  AthenaDatabase:
+    Description: Athena Database for Search
+    Value: !Sub '${AWS::StackName}-db'
