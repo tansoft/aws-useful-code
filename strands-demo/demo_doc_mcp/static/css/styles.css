@@ -3,7 +3,6 @@ body {
     background-color: #191919;
     /* 防止移动端缩放和滚动 */
     -webkit-text-size-adjust: 100%;
-    -webkit-user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -37,9 +36,8 @@ body {
         /* 防止iOS Safari自动缩放 */
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        /* 防止长按菜单，但允许输入框选择文本 */
+        /* 防止长按菜单 */
         -webkit-touch-callout: none;
-        -webkit-user-select: none;
         /* 防止点击高亮 */
         -webkit-tap-highlight-color: transparent;
         /* 防止横向滚动，但允许纵向滚动 */
@@ -133,6 +131,11 @@ body {
     font-size: 16px;
     line-height: 1.4;
     word-wrap: break-word;
+    /* 允许文字选择 */
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
 }
 
 .user-message {

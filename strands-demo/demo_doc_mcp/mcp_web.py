@@ -3,6 +3,7 @@ import uvicorn
 import os
 import uuid
 import base64
+import asyncio
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -84,7 +85,7 @@ async def stream_response(request: PromptRequest, raw_request: Request):
             if not aws_doc_client._is_session_active():
                 aws_doc_client.start()
 
-            current_tools = aws_doc_client.list_tools_sync() + [http_request, current_time]
+            current_tools = await asyncio.get_event_loop().run_in_executor(None, aws_doc_client.list_tools_sync) + [http_request, current_time]
 
             session_id = request.session_id or str(uuid.uuid4())
             if not request.session_id:
