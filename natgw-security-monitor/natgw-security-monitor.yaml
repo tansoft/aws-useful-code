@@ -131,6 +131,8 @@ Resources:
                   - athena:GetQueryResults
                   - athena:GetNamedQuery
                   - athena:ListNamedQueries
+                  - glue:GetDatabase
+                  - glue:GetPartitions
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -145,8 +147,8 @@ Resources:
     Properties:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: python3.9
-      Timeout: 30
+      Runtime: python3.13
+      Timeout: 60
       Code:
         ZipFile: |
           import boto3
@@ -199,17 +201,14 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-traffic-analysis'
-      Runtime: python3.9
+      Runtime: python3.13
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
       Environment:
         Variables:
-          DYNAMODB_TABLE: !Ref IpTable
+          STACK_NAME: !Sub '${AWS::StackName}'
           SNS_TOPIC_ARN: !Ref NotificationTopic
-          S3_BUCKET: !Ref FlowLogBucket
-          S3_PREFIX: /
-          THRESHOLD_MBPS: !Ref OutDataAlertThreshold
       Code:
         ZipFile: |
           import json

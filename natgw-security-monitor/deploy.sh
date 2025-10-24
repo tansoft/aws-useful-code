@@ -37,25 +37,9 @@ aws cloudformation deploy \
 
 if [ $? -eq 0 ]; then
     echo "CloudFormation堆栈部署成功！"
-    
-    # 获取输出值
-    LAMBDA_FUNCTION=$(aws cloudformation describe-stacks \
-        --stack-name $STACK_NAME \
-        --region $REGION \
-        --query 'Stacks[0].Outputs[?OutputKey==`LambdaFunctionName`].OutputValue' \
-        --output text)
-    
-    # 更新Lambda函数代码
-    echo "更新Lambda函数代码..."
-    zip -r lambda_function.zip lambda_function.py
-    
-    aws lambda update-function-code \
-        --function-name $LAMBDA_FUNCTION \
-        --zip-file fileb://lambda_function.zip \
-        --region $REGION
-    
-    rm lambda_function.zip
-    
+
+    ./update_lambda.sh $STACK_NAME $REGION
+
     echo "部署完成！请检查邮箱确认SNS订阅。"
 else
     echo "CloudFormation堆栈部署失败！"

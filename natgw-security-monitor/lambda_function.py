@@ -1,197 +1,309 @@
-import json
+# pip install dnspython maxminddb boto3
+import concurrent.futures
+import dns.resolver
+import dns.reversename
+import maxminddb
 import boto3
+from datetime import datetime, timezone
+import time
+import json
+import re
 import os
-from datetime import datetime, timedelta
-import ipaddress
-from decimal import Decimal
-
-# 初始化AWS客户端
-dynamodb = boto3.resource('dynamodb')
-sns = boto3.client('sns')
-s3 = boto3.client('s3')
-ec2 = boto3.client('ec2')
+from botocore.exceptions import ClientError
 
 # 环境变量
-DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
+STACK_NAME = os.environ['STACK_NAME']
 SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
-S3_BUCKET = os.environ['S3_BUCKET']
-S3_PREFIX = os.environ['S3_PREFIX']
-THRESHOLD_MBPS = float(os.environ['THRESHOLD_MBPS'])
+AWS_REGION = os.environ['AWS_REGION']
 
-def lambda_handler(event, context):
-    """主处理函数"""
+# 使用boto3 进行 athena saved query 查询
+table_name = STACK_NAME + '-table'
+athena_db = STACK_NAME + '-db'
+athena_workgroup = STACK_NAME + '-workgroup'
+
+ddb_client = boto3.resource('dynamodb', region_name=AWS_REGION)
+athena_client = boto3.client('athena', region_name=AWS_REGION)
+sns_client = boto3.client('sns', region_name=AWS_REGION)
+
+def reverse_dns_lookup(ip_address):
     try:
-        # 获取DynamoDB表
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        addr = dns.reversename.from_address(ip_address)
+        resolver = dns.resolver.Resolver()
+        resolver.timeout = 1
+        resolver.lifetime = 1
+        answers = resolver.resolve(addr, "PTR")
+        return (ip_address, str(answers[0]).rstrip('.'))
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.Timeout, dns.exception.DNSException):
+        return (ip_address, None)
 
-        # 分析流量数据
-        traffic_data = analyze_traffic_logs()
-        
-        # 处理IP段数据
-        process_ip_segments(table, traffic_data)
-        
-        return {
-            'statusCode': 200,
-            'body': json.dumps('Traffic analysis completed successfully')
-        }
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        send_notification(f"流量分析失败: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f'Error: {str(e)}')
-        }
+def batch_reverse_lookup(ip_list, max_workers=20):
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_ip = {executor.submit(reverse_dns_lookup, ip): ip for ip in ip_list}
+        for future in concurrent.futures.as_completed(future_to_ip):
+            ip, hostname = future.result()
+            results[ip] = hostname
+    return results
 
-def analyze_traffic_logs():
-    """分析S3中的流量日志"""
-    traffic_data = {}
-    current_hour = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    
-    # 构建S3路径 (Hive格式: year=2023/month=12/day=15/hour=14/)
-    s3_path = f"{S3_PREFIX}year={current_hour.year}/month={current_hour.month:02d}/day={current_hour.day:02d}/hour={current_hour.hour:02d}/"
-    
-    try:
-        # 列出S3对象
-        response = s3.list_objects_v2(
-            Bucket=S3_BUCKET,
-            Prefix=s3_path
-        )
-        
-        if 'Contents' not in response:
-            print(f"No flow logs found for path: {s3_path}")
-            return traffic_data
-        
-        # 处理每个日志文件
-        for obj in response['Contents']:
-            process_flow_log_file(obj['Key'], traffic_data)
-            
-    except Exception as e:
-        print(f"Error analyzing traffic logs: {str(e)}")
-    
-    return traffic_data
+def simplify_domains(domain):
+    """
+    将 AWS 相关域名替换为简化的标识符    
+    参数:
+        domain (str): 原始域名
+    返回:
+        str: 简化后的域名标识符
+    """
+    if domain is None:
+        return 'N/A'
+    # 处理 EC2 实例域名
+    elif re.match(r'ec2-[0-9-]+\..*\.compute\.amazonaws\.com', domain):
+        return 'aws-ec2'
+    # 处理 S3 域名
+    elif re.match(r's3[.-].*\.amazonaws\.com', domain):
+        return 'aws-s3'
+    # 处理 CloudFront 域名
+    elif re.match(r'.*\.r\.cloudfront\.net', domain):
+        return 'aws-cloudfront'
+    # 未匹配的域名保持不变
+    else:
+        return domain
 
-def process_flow_log_file(s3_key, traffic_data):
-    """处理单个流量日志文件"""
-    try:
-        response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
-        content = response['Body'].read().decode('utf-8')
-        
-        for line in content.strip().split('\n'):
-            if line.startswith('version') or not line.strip():
+def batch_findip_in_ddb(ip_list):
+    existing_ips = []
+    non_existing_ips = []
+    
+    # 每批最多 25 个语句（PartiQL 批处理限制）
+    batch_size = 25
+    for i in range(0, len(ip_list), batch_size):
+        batch_ips = ip_list[i:i+batch_size]
+        statements = []
+        for ip in batch_ips:
+            statements.append({
+                'Statement': f"SELECT * FROM \"{table_name}\" WHERE ip = ?",
+                'Parameters': [{'S': ip}]
+            })
+        try:
+            response = ddb_client.batch_execute_statement(Statements=statements)
+            # 处理结果
+            for j, result in enumerate(response['Responses']):
+                ip = batch_ips[j]
+                # 如果IP记录不存在 需要报警
+                # 如果IP记录存在，且action标记非 slient- 前缀，也需要报警
+                if result.get('Item'):
+                    action = result['Item']['action']['S']
+                    if action.startswith('slient-'):
+                        non_existing_ips.append(ip)
+                    else:
+                        existing_ips.append(ip)
+                else:
+                    non_existing_ips.append(ip)
+        except ClientError as e:
+            print(f"Error executing PartiQL batch: {e}")
+            non_existing_ips.extend(batch_ips)
+    return non_existing_ips
+
+def fill_ip_data(rows):
+    cnt = []
+    ip_list = [item["dstaddr"] for item in rows]
+    # 获得的ip为ddb没记录的
+    new_ip_list = batch_findip_in_ddb(ip_list)
+    print(new_ip_list)
+    exit(1)
+    with maxminddb.open_database('data/GeoLite2-ASN.mmdb') as reader_asn:
+        with maxminddb.open_database('data/GeoLite2-Country.mmdb') as reader_country:
+            results = batch_reverse_lookup(new_ip_list)
+            for item in rows:
+                ip = item["dstaddr"]
+                hostname = results[ip]
+                hostname = simplify_domains(hostname)
+                total_bytes = int(item["total_bytes"])
+                connection_count = int(item["connection_count"])
+                asn = reader_asn.get_with_prefix_len(ip)
+                country = reader_country.get_with_prefix_len(ip)
+                asn_no = 'ASN' + str(asn[0]['autonomous_system_number'])
+                asn_name = asn[0]['autonomous_system_organization']
+                asn_prefix = asn[1]
+                country_code = country[0]['country']['iso_code'] if 'country' in country[0] else country[0]['registered_country']['iso_code']
+                # print(ip, hostname, asn_no, asn_name, asn_prefix, country_code)
+                cnt.append({
+                    "ip": ip,
+                    "host": hostname,
+                    "bytes": total_bytes,
+                    "connection": connection_count,
+                    "asn": asn_no,
+                    "asn_name": asn_name,
+                    "asn_prefix": asn_prefix,
+                    "country_code": country_code})
+    return cnt
+
+def write_ip_with_put_item(ip, attributes):
+    """
+    使用PutItem将单个IP地址及其属性写入DynamoDB表
+    
+    参数:
+        ip (str): 要写入的IP地址
+        attributes (dict): IP地址的属性       
+    返回:
+        bool: 是否成功写入
+    """
+    table = ddb_client.Table(table_name)
+    
+    # 准备项目数据
+    item = {'ip': ip, 'action': 'slient-by-insert'}
+    item['record_time'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+
+    # 添加额外的属性（如果有）
+    if attributes:
+        for key, value in attributes.items():
+            if key == "ip":
                 continue
-                
-            fields = line.split(' ')
-            if len(fields) >= 14:
-                srcaddr = fields[3]
-                dstaddr = fields[4]
-                bytes_transferred = int(fields[10]) if fields[10].isdigit() else 0
-                
-                # 只关注出站流量
-                if is_private_ip(srcaddr) and not is_private_ip(dstaddr):
-                    cidr = get_cidr_24(dstaddr)
-                    if cidr not in traffic_data:
-                        traffic_data[cidr] = 0
-                    traffic_data[cidr] += bytes_transferred
-                    
-    except Exception as e:
-        print(f"Error processing file {s3_key}: {str(e)}")
-
-def is_private_ip(ip):
-    """判断是否为私有IP"""
+            if callable(value):
+                item[key] = value()
+            else:
+                item[key] = value
     try:
-        ip_obj = ipaddress.ip_address(ip)
-        return ip_obj.is_private
-    except:
+        # 写入项目
+        response = table.put_item(Item=item)
+        return True
+    except ClientError as e:
+        print(f"Error writing IP {ip}: {e}")
         return False
 
-def get_cidr_24(ip):
-    """获取/24网段"""
-    try:
-        ip_obj = ipaddress.ip_address(ip)
-        network = ipaddress.ip_network(f"{ip}/24", strict=False)
-        return str(network)
-    except:
-        return None
-
-def process_ip_segments(table, traffic_data):
-    """处理IP段数据"""
-    current_hour = datetime.utcnow().strftime('%Y-%m-%d-%H')
+def wait_for_query_completion(execution_id, max_wait_time=300):
+    """
+    等待查询完成并返回结果
     
-    for cidr, bytes_count in traffic_data.items():
-        if not cidr:
-            continue
-            
-        mbps = bytes_count / (1024 * 1024 * 60)  # 转换为MB/分钟，近似MB/s
+    参数:
+        execution_id (str): 查询执行ID
+        max_wait_time (int): 最大等待时间(秒)
+    
+    返回:
+        dict: 查询执行状态和结果
+    """
+    wait_time = 0
+    check_interval = 2  # 每2秒检查一次
+    
+    while wait_time < max_wait_time:
+        response = athena_client.get_query_execution(QueryExecutionId=execution_id)
+        state = response['QueryExecution']['Status']['State']
         
-        try:
-            # 查询现有记录
-            response = table.get_item(Key={'cidr': cidr})
-            
-            if 'Item' in response:
-                # 更新现有记录
-                item = response['Item']
-                update_existing_record(table, item, cidr, current_hour, mbps)
-            else:
-                # 新IP段，创建记录并发送通知
-                create_new_record(table, cidr, current_hour, mbps)
-                send_notification(f"发现新IP段: {cidr}, 流量: {mbps:.2f} MB/s")
-                
-        except Exception as e:
-            print(f"Error processing CIDR {cidr}: {str(e)}")
+        if state in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
+            print(f"查询执行完成，状态: {state}")
+            if state != 'SUCCEEDED':
+                print(response)
+            return response
+        
+        print(f"查询正在执行中，状态: {state}，已等待 {wait_time} 秒...")
+        time.sleep(check_interval)
+        wait_time += check_interval
+    
+    print(f"查询执行超时，已等待 {max_wait_time} 秒")
+    return None
 
-def update_existing_record(table, item, cidr, current_hour, mbps):
-    """更新现有记录"""
-    hour_outdata = item.get('hour-outdata', {})
-    hour_outdata[current_hour] = Decimal(str(mbps))
+def get_query_results(execution_id, max_results=1000):
+    """
+    获取查询结果
     
-    total_outdata = float(item.get('total-outdata', 0)) + mbps
-    status = item.get('status', 'normal')
+    参数:
+        execution_id (str): 查询执行ID
+        max_results (int): 返回的最大结果行数
     
-    # 检查是否需要报警
-    if mbps > THRESHOLD_MBPS and status != 'alert':
-        status = 'alert'
-        send_notification(f"IP段 {cidr} 流量异常: {mbps:.2f} MB/s (阈值: {THRESHOLD_MBPS} MB/s)")
-    elif mbps <= THRESHOLD_MBPS and status == 'alert':
-        status = 'normal'
-    
-    # 更新记录
-    table.update_item(
-        Key={'cidr': cidr},
-        UpdateExpression='SET #ho = :ho, #to = :to, #st = :st',
-        ExpressionAttributeNames={
-            '#ho': 'hour-outdata',
-            '#to': 'total-outdata',
-            '#st': 'status'
+    返回:
+        dict: 查询结果
+    """
+    response = athena_client.get_query_results(
+        QueryExecutionId=execution_id,
+        MaxResults=max_results
+    )
+    return response
+
+def start_query(data_base, workgroup, query_string):
+    '''
+    query_id = 'eb8709b2-9f74-4fae-a56d-9b6c381a9cf7'
+    query_details = athena_client.get_named_query(
+        NamedQueryId=query_id
+    )
+    query_string = query_details['NamedQuery']['QueryString']
+    data_base = query_details['NamedQuery']['Database']
+    '''
+    # 设置查询执行参数
+    params = {
+        'QueryString': query_string,
+        'QueryExecutionContext': {
+            'Database': data_base
         },
-        ExpressionAttributeValues={
-            ':ho': hour_outdata,
-            ':to': Decimal(str(total_outdata)),
-            ':st': status
+        'WorkGroup': workgroup,
+    }
+    '''
+        'ResultConfiguration': {
+            'OutputLocation': output_location or s3_output_location
         }
-    )
+    '''
 
-def create_new_record(table, cidr, current_hour, mbps):
-    """创建新记录"""
-    status = 'alert' if mbps > THRESHOLD_MBPS else 'unknown'
-    
-    table.put_item(
-        Item={
-            'cidr': cidr,
-            'hour-outdata': {current_hour: Decimal(str(mbps))},
-            'total-outdata': Decimal(str(mbps)),
-            'purpose': 'unknown',
-            'status': status
-        }
-    )
+    # 启动查询执行
+    response = athena_client.start_query_execution(**params)
+    return response['QueryExecutionId']
 
-def send_notification(message):
-    """发送SNS通知"""
-    try:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Message=message,
-            Subject='NAT Gateway Security Monitor Alert'
-        )
-        print(f"Notification sent: {message}")
-    except Exception as e:
-        print(f"Error sending notification: {str(e)}")
+def check_last_data(last_minute):
+    query_string = f'''
+    SELECT
+        dstaddr, SUM(bytes) as total_bytes, COUNT(*) as connection_count,
+        date_format(from_unixtime(MIN("start"), 'Asia/Shanghai'),'%Y-%m-%d %H:%i:%s') as s,
+        date_format(from_unixtime(MAX("end"), 'Asia/Shanghai'),'%Y-%m-%d %H:%i:%s') as e
+    FROM vpc_flow_logs WHERE action = 'ACCEPT'
+        AND not regexp_like(dstaddr, '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|169\.254\.)')
+        AND start >= CAST(to_unixtime(DATE_ADD('minute', -{last_minute}, CURRENT_TIMESTAMP)) AS BIGINT)
+    GROUP BY dstaddr ORDER BY total_bytes DESC;
+    '''
+
+    wait_for_query_completion(start_query(athena_db, athena_workgroup, 'MSCK REPAIR TABLE `vpc_flow_logs`;'))
+
+    execution_id = start_query(athena_db, athena_workgroup, query_string)
+
+    execution_status = wait_for_query_completion(execution_id)
+    if execution_status and execution_status['QueryExecution']['Status']['State'] == 'SUCCEEDED':
+        results = get_query_results(execution_id)
+
+        # 处理结果
+        columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
+        print("查询结果列: ", columns)
+        
+        rows = []
+        for row in results['ResultSet']['Rows'][1:]:  # 跳过标题行
+            values = [field.get('VarCharValue', '') for field in row['Data']]
+            rows.append(dict(zip(columns, values)))
+        
+        print(f"查询返回了 {len(rows)} 行数据")
+        print(json.dumps(rows[:5], indent=2))  # 打印前5行数据
+
+        cnt = fill_ip_data(rows)
+        email = ""
+        for obj in cnt:
+            write_ip_with_put_item(obj['ip'], obj)
+            if email == "":
+                email = "发现以下新IP：\nip/段 | 流量 | 链接数 | 域名 | 国家 | ASN | ASN名称\n"
+            email += f"{obj['ip']}/{obj['asn_prefix']} | {obj['bytes']} | {obj['connection']} | {obj['host']} | {obj['country_code']} | {obj['asn']} | {obj['asn_name']}\n"
+        if email != "":
+            message_data = {
+                "default": json.dumps(cnt),
+                "email": email,
+            }
+            response = sns_client.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Message=json.dumps(message_data),
+                MessageStructure='json',
+                Subject='NAT Gatway有对外访问的新IP！'
+            )
+            print(response)
+    else:
+        print("查询执行失败或被取消")
+
+def lambda_handler(event, context):
+    check_last_data(15)
+    return {
+        'statusCode': 200,
+        'body': 'finish'
+    }
+
+if __name__ == "__main__":
+    check_last_data(15)
