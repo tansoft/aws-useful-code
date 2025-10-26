@@ -4,8 +4,8 @@
 
 # 检查参数
 if [ $# -lt 5 ]; then
-    echo "用法: $0 <stack-name> <nat-gateway-id> <email> <region> <threshold-mbps>"
-    echo "示例: $0 natgw-monitor nat-12345678 user@example.com us-east-1 300"
+    echo "用法: $0 <stack-name> <nat-gateway-id> <email> <region> <threshold-bytesmin>"
+    echo "示例: $0 natgw-monitor nat-12345678 user@example.com us-east-1 10000000"
     exit 1
 fi
 
@@ -28,7 +28,7 @@ aws cloudformation deploy \
     --stack-name $STACK_NAME \
     --parameter-overrides \
         NatGwId=$NAT_GW_ID \
-        RefreshInterval=2 \
+        RefreshInterval=10 \
         OutDataAlertThreshold=$THRESHOLD \
         NotifyEmail=$EMAIL \
         LogsRetainDays=7 \

@@ -14,14 +14,17 @@ from botocore.exceptions import ClientError
 # 环境变量
 STACK_NAME = os.environ['STACK_NAME']
 SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
+REFRESH_INTERVAL = int(os.environ['REFRESH_INTERVAL'])
 AWS_REGION = os.environ['AWS_REGION']
+if not STACK_NAME or not SNS_TOPIC_ARN or not REFRESH_INTERVAL or not AWS_REGION:
+    raise ValueError("environment variable is required")
 
 # 使用boto3 进行 athena saved query 查询
 table_name = STACK_NAME + '-table'
 athena_db = STACK_NAME + '-db'
 athena_workgroup = STACK_NAME + '-workgroup'
 
-ddb_client = boto3.resource('dynamodb', region_name=AWS_REGION)
+ddb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 athena_client = boto3.client('athena', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
 
@@ -72,34 +75,42 @@ def batch_findip_in_ddb(ip_list):
     existing_ips = []
     non_existing_ips = []
     
-    # 每批最多 25 个语句（PartiQL 批处理限制）
-    batch_size = 25
+    table = ddb_resource.Table(table_name)
+    
+    # 每批最多 100 个项目（batch_get_item 限制）
+    batch_size = 100
     for i in range(0, len(ip_list), batch_size):
         batch_ips = ip_list[i:i+batch_size]
-        statements = []
-        for ip in batch_ips:
-            statements.append({
-                'Statement': f"SELECT * FROM \"{table_name}\" WHERE ip = ?",
-                'Parameters': [{'S': ip}]
-            })
+        
         try:
-            response = ddb_client.batch_execute_statement(Statements=statements)
-            # 处理结果
-            for j, result in enumerate(response['Responses']):
-                ip = batch_ips[j]
-                # 如果IP记录不存在 需要报警
-                # 如果IP记录存在，且action标记非 slient- 前缀，也需要报警
-                if result.get('Item'):
-                    action = result['Item']['action']['S']
+            response = ddb_resource.batch_get_item(
+                RequestItems={
+                    table_name: {
+                        'Keys': [{'ip': ip} for ip in batch_ips]
+                    }
+                }
+            )
+            
+            # 获取返回的项目
+            returned_items = response.get('Responses', {}).get(table_name, [])
+            returned_ips = {item['ip'] for item in returned_items}
+            
+            for ip in batch_ips:
+                if ip in returned_ips:
+                    # 找到对应的项目并检查action
+                    item = next(item for item in returned_items if item['ip'] == ip)
+                    action = item.get('action', '')
                     if action.startswith('slient-'):
-                        non_existing_ips.append(ip)
-                    else:
                         existing_ips.append(ip)
+                    else:
+                        non_existing_ips.append(ip)
                 else:
                     non_existing_ips.append(ip)
+                    
         except ClientError as e:
-            print(f"Error executing PartiQL batch: {e}")
+            print(f"Error executing batch_get_item: {e}")
             non_existing_ips.extend(batch_ips)
+            
     return non_existing_ips
 
 def fill_ip_data(rows):
@@ -107,33 +118,33 @@ def fill_ip_data(rows):
     ip_list = [item["dstaddr"] for item in rows]
     # 获得的ip为ddb没记录的
     new_ip_list = batch_findip_in_ddb(ip_list)
-    print(new_ip_list)
-    exit(1)
+    print(f"找到{len(new_ip_list)}个新ip")
     with maxminddb.open_database('data/GeoLite2-ASN.mmdb') as reader_asn:
         with maxminddb.open_database('data/GeoLite2-Country.mmdb') as reader_country:
             results = batch_reverse_lookup(new_ip_list)
             for item in rows:
                 ip = item["dstaddr"]
-                hostname = results[ip]
-                hostname = simplify_domains(hostname)
-                total_bytes = int(item["total_bytes"])
-                connection_count = int(item["connection_count"])
-                asn = reader_asn.get_with_prefix_len(ip)
-                country = reader_country.get_with_prefix_len(ip)
-                asn_no = 'ASN' + str(asn[0]['autonomous_system_number'])
-                asn_name = asn[0]['autonomous_system_organization']
-                asn_prefix = asn[1]
-                country_code = country[0]['country']['iso_code'] if 'country' in country[0] else country[0]['registered_country']['iso_code']
-                # print(ip, hostname, asn_no, asn_name, asn_prefix, country_code)
-                cnt.append({
-                    "ip": ip,
-                    "host": hostname,
-                    "bytes": total_bytes,
-                    "connection": connection_count,
-                    "asn": asn_no,
-                    "asn_name": asn_name,
-                    "asn_prefix": asn_prefix,
-                    "country_code": country_code})
+                if ip in new_ip_list:
+                    hostname = results[ip]
+                    hostname = simplify_domains(hostname)
+                    total_bytes = int(item["total_bytes"])
+                    connection_count = int(item["connection_count"])
+                    asn = reader_asn.get_with_prefix_len(ip)
+                    country = reader_country.get_with_prefix_len(ip)
+                    asn_no = 'ASN' + str(asn[0]['autonomous_system_number'])
+                    asn_name = asn[0]['autonomous_system_organization']
+                    asn_prefix = asn[1]
+                    country_code = country[0]['country']['iso_code'] if 'country' in country[0] else country[0]['registered_country']['iso_code']
+                    # print(ip, hostname, asn_no, asn_name, asn_prefix, country_code)
+                    cnt.append({
+                        "ip": ip,
+                        "host": hostname,
+                        "bytes": total_bytes,
+                        "connection": connection_count,
+                        "asn": asn_no,
+                        "asn_name": asn_name,
+                        "asn_prefix": asn_prefix,
+                        "country_code": country_code})
     return cnt
 
 def write_ip_with_put_item(ip, attributes):
@@ -146,7 +157,7 @@ def write_ip_with_put_item(ip, attributes):
     返回:
         bool: 是否成功写入
     """
-    table = ddb_client.Table(table_name)
+    table = ddb_resource.Table(table_name)
     
     # 准备项目数据
     item = {'ip': ip, 'action': 'slient-by-insert'}
@@ -251,7 +262,7 @@ def check_last_data(last_minute):
         date_format(from_unixtime(MIN("start"), 'Asia/Shanghai'),'%Y-%m-%d %H:%i:%s') as s,
         date_format(from_unixtime(MAX("end"), 'Asia/Shanghai'),'%Y-%m-%d %H:%i:%s') as e
     FROM vpc_flow_logs WHERE action = 'ACCEPT'
-        AND not regexp_like(dstaddr, '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|169\.254\.)')
+        AND not regexp_like(dstaddr, '^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|127\\.|169\\.254\\.)')
         AND start >= CAST(to_unixtime(DATE_ADD('minute', -{last_minute}, CURRENT_TIMESTAMP)) AS BIGINT)
     GROUP BY dstaddr ORDER BY total_bytes DESC;
     '''
@@ -274,7 +285,7 @@ def check_last_data(last_minute):
             rows.append(dict(zip(columns, values)))
         
         print(f"查询返回了 {len(rows)} 行数据")
-        print(json.dumps(rows[:5], indent=2))  # 打印前5行数据
+        # print(json.dumps(rows[:5], indent=2))  # 打印前5行数据
 
         cnt = fill_ip_data(rows)
         email = ""
@@ -288,22 +299,25 @@ def check_last_data(last_minute):
                 "default": json.dumps(cnt),
                 "email": email,
             }
-            response = sns_client.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Message=json.dumps(message_data),
-                MessageStructure='json',
-                Subject='NAT Gatway有对外访问的新IP！'
-            )
-            print(response)
+            try:
+                response = sns_client.publish(
+                    TopicArn=SNS_TOPIC_ARN,
+                    Message=json.dumps(message_data),
+                    MessageStructure='json',
+                    Subject='NAT Gatway有对外访问的新IP！'
+                )
+                print(response)
+            except ClientError as e:
+                print(f"Error publish: {e}")
     else:
         print("查询执行失败或被取消")
 
 def lambda_handler(event, context):
-    check_last_data(15)
+    check_last_data(REFRESH_INTERVAL+5)
     return {
         'statusCode': 200,
         'body': 'finish'
     }
 
 if __name__ == "__main__":
-    check_last_data(15)
+    lambda_handler(null, null)

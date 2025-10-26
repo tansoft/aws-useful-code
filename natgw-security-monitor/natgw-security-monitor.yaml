@@ -16,8 +16,8 @@ Parameters:
   
   OutDataAlertThreshold:
     Type: Number
-    Description: 出流量报警阈值(MB/s)
-    Default: 30
+    Description: 出流量报警阈值(Bytes/min)
+    Default: 30000000
 
   NotifyEmail:
     Type: String
@@ -64,7 +64,7 @@ Resources:
   IpTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub '${AWS::StackName}-iptable'
+      TableName: !Sub '${AWS::StackName}-table'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: ip
@@ -96,6 +96,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
                   - dynamodb:Scan
@@ -114,6 +115,7 @@ Resources:
                   - s3:ListMultipartUploadParts
                   - s3:AbortMultipartUpload
                   - s3:PutObject
+                  - s3:DeleteObject
                 Resource:
                   - !Sub 'arn:aws:s3:::${FlowLogBucket}/*'
                   - !Sub 'arn:aws:s3:::${FlowLogBucket}'
@@ -131,8 +133,19 @@ Resources:
                   - athena:GetQueryResults
                   - athena:GetNamedQuery
                   - athena:ListNamedQueries
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabases
                   - glue:GetDatabase
+                  - glue:GetTables
+                  - glue:GetTable
                   - glue:GetPartitions
+                  - glue:GetPartition
+                  - glue:BatchCreatePartition
+                  - glue:CreatePartition
+                  - glue:UpdatePartition
+                  - glue:DeletePartition
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -209,6 +222,7 @@ Resources:
         Variables:
           STACK_NAME: !Sub '${AWS::StackName}'
           SNS_TOPIC_ARN: !Ref NotificationTopic
+          REFRESH_INTERVAL: !Ref RefreshInterval
       Code:
         ZipFile: |
           import json
@@ -243,8 +257,8 @@ Resources:
       AlarmDescription: NAT Gateway出站流量报警
       MetricName: BytesOutToDestination
       Namespace: AWS/NatGateway
-      Statistic: Average
-      Period: 300
+      Statistic: Sum
+      Period: 60
       EvaluationPeriods: 2
       Threshold: !Ref OutDataAlertThreshold
       ComparisonOperator: GreaterThanThreshold
