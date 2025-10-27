@@ -271,6 +271,7 @@ Resources:
   # Athena 工作组
   AthenaWorkGroup:
     Type: AWS::Athena::WorkGroup
+    DeletionPolicy: Delete
     Properties:
       Name: !Sub '${AWS::StackName}-workgroup'
       Description: 'WorkGroup for NAT Gateway Flow Logs analysis'
@@ -285,21 +286,77 @@ Resources:
   # Athena 数据库
   AthenaDatabase:
     Type: AWS::Glue::Database
+    DeletionPolicy: Delete
     Properties:
       CatalogId: !Ref AWS::AccountId
       DatabaseInput:
         Name: !Sub '${AWS::StackName}-db'
         Description: 'Database for NAT Gateway Flow Logs analysis'
 
+  AthenaTable:
+    Type: AWS::Glue::Table
+    DeletionPolicy: Delete
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref AthenaDatabase
+      TableInput:
+        Name: "vpc_flow_logs"
+        StorageDescriptor:
+          Columns:
+            - Name: "version"
+              Type: "int"
+            - Name: "account_id"
+              Type: "string"
+            - Name: "interface_id"
+              Type: "string"
+            - Name: "srcaddr"
+              Type: "string"
+            - Name: "dstaddr"
+              Type: "string"
+            - Name: "srcport"
+              Type: "int"
+            - Name: "dstport"
+              Type: "int"
+            - Name: "protocol"
+              Type: "int"
+            - Name: "packets"
+              Type: "int"
+            - Name: "bytes"
+              Type: "bigint"
+            - Name: "start"
+              Type: "bigint"
+            - Name: "end"
+              Type: "bigint"
+            - Name: "action"
+              Type: "string"
+            - Name: "log_status"
+              Type: "string"
+          Location: !Sub "s3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/"
+          InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+          SerdeInfo:
+            SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+        PartitionKeys:
+          - Name: "year"
+            Type: "string"
+          - Name: "month"
+            Type: "string"
+          - Name: "day"
+            Type: "string"
+          - Name: "hour"
+            Type: "string"
+        Parameters:
+          "has_encrypted_data": "false"
+
   # Athena 表创建查询
   # s3://xxx/AWSLogs/aws-account-id=xxx/aws-service=vpcflowlogs/aws-region=ap-northeast-1/year=2025/month=10/day=11/hour=06/xxx_vpcflowlogs_ap-northeast-1_fl-006d753xxx_20251011T0650Z_1338b62c.log.parquet
   AthenaTableCreationQuery:
     Type: AWS::Athena::NamedQuery
-    DependsOn: AthenaDatabase
+    DeletionPolicy: Delete
     Properties:
       Database: !Sub '${AWS::StackName}-db'
-      Name: !Sub '${AWS::StackName}-create-flow-logs-table'
-      Description: 'Create table for VPC Flow Logs'
+      Name: !Sub '${AWS::StackName}-create-flow-logs-table-projection'
+      Description: 'Create table for VPC Flow Logs with projection'
       QueryString: !Sub |
         CREATE EXTERNAL TABLE IF NOT EXISTS vpc_flow_logs (
           `version` int,
@@ -340,13 +397,14 @@ Resources:
           'projection.hour.type'='integer',
           'projection.hour.range'='0,23',
           'projection.hour.digits'='2',
-          'storage.location.template'='s3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/year=${!}{year}/month=${!}{month}/day=${!}{day}/hour=${!}{hour}/'
+          'storage.location.template'='s3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/year=${!year}/month=${!month}/day=${!day}/hour=${!hour}/'
         );
       WorkGroup: !Ref AthenaWorkGroup
 
   # 常用分析查询示例
   AthenaTopSourcesQuery:
     Type: AWS::Athena::NamedQuery
+    DeletionPolicy: Delete
     Properties:
       Database: !Sub '${AWS::StackName}-db'
       Name: !Sub '${AWS::StackName}-top-sources'
@@ -370,6 +428,7 @@ Resources:
 
   AthenaTopDestinationsQuery:
     Type: AWS::Athena::NamedQuery
+    DeletionPolicy: Delete
     Properties:
       Database: !Sub '${AWS::StackName}-db'
       Name: !Sub '${AWS::StackName}-top-destinations'
@@ -393,6 +452,7 @@ Resources:
 
   AthenaTopDestCClassQuery:
     Type: AWS::Athena::NamedQuery
+    DeletionPolicy: Delete
     Properties:
       Database: !Sub '${AWS::StackName}-db'
       Name: !Sub '${AWS::StackName}-top-dest-c-class'
@@ -417,6 +477,7 @@ Resources:
 
   AthenaTopPortsQuery:
     Type: AWS::Athena::NamedQuery
+    DeletionPolicy: Delete
     Properties:
       Database: !Sub '${AWS::StackName}-db'
       Name: !Sub '${AWS::StackName}-top-ports'

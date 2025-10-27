@@ -5,7 +5,7 @@
 # 检查参数
 if [ $# -lt 5 ]; then
     echo "用法: $0 <stack-name> <nat-gateway-id> <email> <region> <threshold-bytesmin>"
-    echo "示例: $0 natgw-monitor nat-12345678 user@example.com us-east-1 10000000"
+    echo "示例: $0 natgw-monitor nat-12345678 user@example.com us-east-1 100000"
     exit 1
 fi
 
