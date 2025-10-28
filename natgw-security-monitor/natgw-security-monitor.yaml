@@ -133,6 +133,7 @@ Resources:
                   - athena:GetQueryResults
                   - athena:GetNamedQuery
                   - athena:ListNamedQueries
+                  - athena:StopQueryExecution
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -142,10 +143,12 @@ Resources:
                   - glue:GetTable
                   - glue:GetPartitions
                   - glue:GetPartition
-                  - glue:BatchCreatePartition
                   - glue:CreatePartition
+                  - glue:BatchCreatePartition
                   - glue:UpdatePartition
+                  - glue:BatchUpdatePartition
                   - glue:DeletePartition
+                  - glue:BatchDeletePartition
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -272,6 +275,7 @@ Resources:
   AthenaWorkGroup:
     Type: AWS::Athena::WorkGroup
     DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       Name: !Sub '${AWS::StackName}-workgroup'
       Description: 'WorkGroup for NAT Gateway Flow Logs analysis'
@@ -301,6 +305,13 @@ Resources:
       DatabaseName: !Ref AthenaDatabase
       TableInput:
         Name: "vpc_flow_logs"
+        TableType: "EXTERNAL_TABLE"
+        Parameters:
+          EXTERNAL: "true"
+          "skip.header.line.count": "1"
+          classification: "parquet"
+          compressionType: "none"
+          typeOfData: "file"
         StorageDescriptor:
           Columns:
             - Name: "version"
@@ -318,9 +329,9 @@ Resources:
             - Name: "dstport"
               Type: "int"
             - Name: "protocol"
-              Type: "int"
+              Type: "bigint"
             - Name: "packets"
-              Type: "int"
+              Type: "bigint"
             - Name: "bytes"
               Type: "bigint"
             - Name: "start"
@@ -334,8 +345,11 @@ Resources:
           Location: !Sub "s3://${FlowLogBucket}/AWSLogs/aws-account-id=${AWS::AccountId}/aws-service=vpcflowlogs/aws-region=${AWS::Region}/"
           InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
           OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+          Compressed: false
           SerdeInfo:
             SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+            Parameters:
+              serialization.format: "1"
         PartitionKeys:
           - Name: "year"
             Type: "string"
@@ -345,8 +359,6 @@ Resources:
             Type: "string"
           - Name: "hour"
             Type: "string"
-        Parameters:
-          "has_encrypted_data": "false"
 
   # Athena 表创建查询
   # s3://xxx/AWSLogs/aws-account-id=xxx/aws-service=vpcflowlogs/aws-region=ap-northeast-1/year=2025/month=10/day=11/hour=06/xxx_vpcflowlogs_ap-northeast-1_fl-006d753xxx_20251011T0650Z_1338b62c.log.parquet
@@ -538,7 +550,7 @@ Outputs:
 
   AthenaConsoleLink:
     Description: Link to Athena Console with predefined queries
-    Value: !Sub 'https://console.aws.amazon.com/athena/home?region=${AWS::Region}#/workgroups/${AthenaWorkGroup}'
+    Value: !Sub 'https://console.aws.amazon.com/athena/home?region=${AWS::Region}'
 
   AthenaDatabase:
     Description: Athena Database for Search
