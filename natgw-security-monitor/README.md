@@ -1,5 +1,7 @@
 # Nat Gateway 安全监测程序
 
+![architecture](architecture.png)
+
 提供 natgw-security-monitor.yaml ，可以直接进行CloudFormation部署。其中模版参数如下：
 * natgw-id 选择本区域的natgw，如：nat-xxxxxx
 * refresh-intval 汇总计算间隔，默认：5分钟，定期调用流量分析lambda
