@@ -4,7 +4,7 @@
 * natgw-id 选择本区域的natgw，如：nat-xxxxxx
 * refresh-intval 汇总计算间隔，默认：5分钟，定期调用流量分析lambda
 * flowlog-s3-path 保存日志的s3桶和路径，如：s3://my-natgw-data/flowlogs/
-* outdata-alert-threshold 出流量报警阈值，如：300MB/s
+* outdata-alert-threshold 出流量报警阈值，如：10000000 Bytes/min
 * notify-sns 报警通知SNS，如：natgw-sec-monitor-sns
 * notify-email 报警通知邮箱，如：abc@mail.com
 * logs-retain-days 原始日志保存天数，默认：7天
@@ -21,7 +21,7 @@
 ## 部署方法
 
 ```bash
-./deploy.sh natgw-monitor nat-12345678 my-bucket user@example.com us-east-1
+./deploy.sh natgw-monitor nat-xxxxx user@abc.com us-east-1 1000000
 ```
 
 或者
