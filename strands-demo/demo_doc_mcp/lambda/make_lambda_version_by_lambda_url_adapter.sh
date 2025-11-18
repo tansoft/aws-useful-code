@@ -140,15 +140,15 @@ function make_layer() {
 # 单layer超过 70M，分为多个layer，--no-deps xxx
 # LAYER_ARN=$(make_layer $FUNCTION_NAME-layer $REGION $PYVER $TEMP_DIR -r ../requirements.txt)
 echo "制作web框架层..."
-LAYER_ARN1=$(make_layer fastapi-uvicorn-jinja2 $REGION $PYVER $TEMP_DIR fastapi uvicorn jinja2)
+LAYER_ARN1=$(make_layer fastapi-uvicorn-jinja2 $REGION $PYVER $TEMP_DIR fastapi uvicorn pydantic python-multipart jinja2)
 echo "Lambda Layer: $LAYER_ARN1"
 echo "制作strands-agents层..."
-LAYER_ARN2=$(make_layer strands-agents $REGION $PYVER $TEMP_DIR strands-agents strands-agents-tools)
+LAYER_ARN2=$(make_layer strands-agents $REGION $PYVER $TEMP_DIR mcp strands-agents strands-agents-tools)
 echo "Lambda Layer: $LAYER_ARN2"
 
 # 2. 准备Lambda代码
 echo "准备Lambda代码..."
-cp -r ../static ../templates ../mcp_web.py run.sh $TEMP_DIR/
+cp -r ../static ../templates ../mcp_web.py ../role_config.py run.sh $TEMP_DIR/
 touch $TEMP_DIR/__init__.py
 cd $TEMP_DIR
 zip -r function.zip . -x "python/*"

@@ -3,14 +3,17 @@ body {
     background-color: #191919;
     /* 防止移动端缩放和滚动 */
     -webkit-text-size-adjust: 100%;
-    -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
 }
 
-/* 桌面端防止双滚动条 */
+/* 桌面端防止双滚动条，并允许文本选择 */
 @media (min-width: 769px) {
     body {
         overflow-y: hidden;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
     }
 }
 
@@ -36,8 +39,9 @@ body {
         /* 防止iOS Safari自动缩放 */
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        /* 防止长按菜单 */
+        /* 防止长按菜单，但允许输入框选择文本 */
         -webkit-touch-callout: none;
+        -webkit-user-select: none;
         /* 防止点击高亮 */
         -webkit-tap-highlight-color: transparent;
         /* 防止横向滚动，但允许纵向滚动 */
@@ -131,11 +135,6 @@ body {
     font-size: 16px;
     line-height: 1.4;
     word-wrap: break-word;
-    /* 允许文字选择 */
-    -webkit-user-select: text;
-    -moz-user-select: text;
-    -ms-user-select: text;
-    user-select: text;
 }
 
 .user-message {
@@ -261,10 +260,62 @@ body {
 
 .markdown-content pre {
     background-color: #303030;
-    padding: 10px;
+    padding: 10px 40px 10px 10px;
     border-radius: 4px;
     overflow-x: auto;
     color: #FFFFFF;
+    position: relative;
+}
+
+/* Code block copy button styles */
+.code-block-container {
+    position: relative;
+}
+
+.copy-code-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 4px;
+    color: #AAAAAA;
+    font-size: 12px;
+    padding: 4px 6px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+.copy-code-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.copy-code-btn:active {
+    transform: scale(0.95);
+}
+
+.copy-code-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Inline code copy button */
+.markdown-content code {
+    background-color: #303030;
+    padding: 2px 4px;
+    border-radius: 4px;
+    color: #87CEEB;
+    position: relative;
 }
 
 /* Streaming styles */
@@ -313,26 +364,80 @@ body {
     background-color: #3C3C3C;
 }
 
-/* Copy message button styles */
+/* 统一的复制按钮样式 */
+.copy-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 4px;
+    color: #AAAAAA;
+    font-size: 12px;
+    padding: 4px 6px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+.copy-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.copy-btn:active {
+    transform: scale(0.95);
+}
+
+.copy-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* 兼容旧的类名 */
 .copy-message-btn {
     position: absolute;
     top: 5px;
     right: 5px;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
     border: none;
     border-radius: 4px;
-    color: white;
+    color: #AAAAAA;
     font-size: 12px;
-    padding: 2px 4px;
+    padding: 4px 6px;
     cursor: pointer;
-    opacity: 1;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+    opacity: 0.7;
+    transition: all 0.2s ease;
     backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
 }
 
 .copy-message-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+    opacity: 1;
     transform: scale(1.1);
+}
+
+.copy-message-btn:active {
+    transform: scale(0.95);
+}
+
+.copy-message-btn svg {
+    width: 14px;
+    height: 14px;
 }
 
 /* WeChat-style input container */
@@ -566,21 +671,23 @@ body {
     border-radius: 4px;
     color: #AAAAAA;
     font-size: 12px;
-    padding: 4px 8px;
+    padding: 4px 6px;
     cursor: pointer;
     opacity: 0.7;
     transition: all 0.2s ease;
     backdrop-filter: blur(5px);
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
 }
 
 .answer-block .copy-answer-btn:hover {
     background: rgba(255, 255, 255, 0.2);
     color: #FFFFFF;
     opacity: 1;
-    transform: scale(1.05);
+    transform: scale(1.1);
 }
 
 .answer-block .copy-answer-btn:active {
@@ -661,11 +768,33 @@ body {
     }
 
     /* 减少复制按钮占用空间 */
-    .copy-message-btn {
+    .copy-message-btn, .copy-btn {
         top: 3px;
         right: 3px;
-        padding: 1px 3px;
-        font-size: 11px;
+        width: 20px;
+        height: 20px;
+        padding: 2px;
+    }
+
+    .copy-message-btn svg, .copy-btn svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    /* answer 和 code 块的复制按钮 */
+    .answer-block .copy-answer-btn,
+    .copy-code-btn {
+        top: 6px;
+        right: 6px;
+        width: 20px;
+        height: 20px;
+        padding: 2px;
+    }
+
+    .answer-block .copy-answer-btn svg,
+    .copy-code-btn svg {
+        width: 12px;
+        height: 12px;
     }
 
     /* 优化输入区域 */
@@ -785,8 +914,222 @@ body {
         font-size: 10px;
     }
 
-    .copy-message-btn {
-        font-size: 10px;
-        padding: 1px 2px;
+    .copy-message-btn, .copy-btn {
+        width: 18px;
+        height: 18px;
+        padding: 1px;
+    }
+
+    .copy-message-btn svg, .copy-btn svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    .answer-block .copy-answer-btn,
+    .copy-code-btn {
+        width: 18px;
+        height: 18px;
+        padding: 1px;
+    }
+
+    .answer-block .copy-answer-btn svg,
+    .copy-code-btn svg {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+/* MCP工具选择样式 - 与角色选择保持一致 */
+.mcp-item {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.mcp-item.active {
+    border-left-color: #07C160;
+    background-color: rgba(7, 193, 96, 0.1) !important;
+}
+
+.mcp-item:hover:not(.active) {
+    background-color: #3C3C3C !important;
+}
+
+.mcp-item .form-check-input {
+    background-color: #404040;
+    border: 2px solid #606060;
+    margin-top: 0.1em;
+    width: 16px;
+    height: 16px;
+    pointer-events: none; /* 防止直接点击复选框，统一通过父元素点击处理 */
+}
+
+.mcp-item .form-check-input:checked {
+    background-color: #07C160;
+    border-color: #07C160;
+    box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.2);
+}
+
+.mcp-item .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background-color: #07C160 !important;
+    color: white;
+    margin-left: 6px;
+}
+
+/* 图片模态框样式 - 微信风格 */
+.image-modal-content {
+    background-color: #000 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+}
+
+.image-modal-header {
+    background-color: rgba(0, 0, 0, 0.8) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 15px 20px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+}
+
+.image-modal-header .modal-title {
+    color: #fff !important;
+    font-size: 16px;
+}
+
+.image-modal-header .btn-close {
+    filter: invert(1) !important;
+    opacity: 0.8;
+}
+
+.image-modal-body {
+    background-color: #000 !important;
+    padding: 0;
+    border-radius: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    position: relative;
+}
+
+.image-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px 20px 20px; /* 顶部留空给标题栏 */
+    overflow: hidden;
+    position: relative;
+}
+
+.modal-image {
+    max-width: 100%;
+    max-height: 100%;
+    height: auto;
+    width: auto;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: pointer;
+    object-fit: contain;
+    transform-origin: center center;
+    user-select: none;
+    transition: transform 0.3s ease;
+}
+
+.modal-image.zoomed {
+    cursor: pointer;
+    max-width: none;
+    max-height: none;
+}
+
+/* 图片容器支持滚动 */
+.image-container.zoomed {
+    overflow: auto;
+}
+
+/* 添加缩放提示 */
+.zoom-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    opacity: 0.8;
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+    z-index: 1001;
+}
+
+/* 根据设备类型显示不同提示 */
+.mobile-hint {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .desktop-hint {
+        display: none;
+    }
+
+    .mobile-hint {
+        display: inline;
+    }
+}
+
+/* 让聊天中的图片可点击 */
+.message-content img {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 8px;
+}
+
+.message-content img:hover {
+    opacity: 0.9;
+    transform: scale(1.02);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+    .modal-lg {
+        max-width: 95vw !important;
+        margin: 10px auto;
+    }
+
+    .image-modal-body {
+        min-height: 250px;
+    }
+
+    .image-container {
+        padding: 15px;
+    }
+
+    .modal-image {
+        max-height: 60vh;
+    }
+
+    .image-modal-header {
+        padding: 10px 15px;
+    }
+
+    .image-modal-header .modal-title {
+        font-size: 16px;
     }
 }

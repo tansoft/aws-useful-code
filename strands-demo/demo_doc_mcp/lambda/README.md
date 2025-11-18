@@ -33,6 +33,12 @@ source env/bin/activate
 https://xxxxxxxx.cloudfront.net/?token=secret_token
 ```
 
+## 更新资源
+
+脚本在大部分情况都会判断资源是否存在，存在则跳过创建。
+
+lambda修改后可以直接运行部署更新，layer建议修改脚本增加对应库后，在控制台删除原layer，会自动重新创建。
+
 ## 清理资源
 
 删除所有部署的资源：
