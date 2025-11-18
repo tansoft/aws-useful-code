@@ -29,7 +29,13 @@
 或者
 
 在CloudFormation控制台中，部署 natgw-security-monitor.yaml
+
 部署完成后，找到输出信息中的 lambda 函数，上传替换 lambda_function_3.13.zip 即可。
+
+也可以使用 update_lambda.sh 进行更新：
+```bash
+./update_lambda.sh natgw-monitor us-east-1
+```
 
 ## 效果
 
@@ -44,3 +50,13 @@ ip/段 | 流量 | 链接数 | 域名 | 国家 | ASN | ASN名称
 ```
 
 突然对外发送大流量则会发生报警邮件。
+
+## 本地调试
+
+```bash
+STACK_NAME=natgw-monitor  \
+SNS_TOPIC_ARN=arn:aws:sns:us-east-1:1234567890:natgw-monitor-notify \
+REFRESH_INTERVAL=10 \
+AWS_REGION=us-east-1 \
+    python lambda_function.py
+```
