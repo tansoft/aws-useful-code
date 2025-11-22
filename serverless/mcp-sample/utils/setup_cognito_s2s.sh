@@ -10,6 +10,12 @@ echo "Setting up ${PROJECT} Cognito S2S Authentication"
 echo "Region: $REGION"
 echo "================================================"
 
+command -v aws >/dev/null 2>&1 || { echo "错误: 需要安装 AWS CLI"; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "错误: 需要安装 jq"; exit 1; }
+aws sts get-caller-identity > /dev/null 2>&1 || { echo "错误: AWS 凭证未配置，请执行 aws configure"; exit 1; }
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "✓ Use AWS Account ID: $ACCOUNT_ID"
+
 # 1. 创建 User Pool
 echo ""
 echo "[1/5] Creating User Pool..."
