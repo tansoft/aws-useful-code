@@ -1,0 +1,28 @@
+[
+  {
+    "description": "Ask questions to artificial intelligence agents",
+    "inputSchema": {
+      "properties": {
+        "question": {
+          "description": "Ask question",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ask_ai"
+  },
+  {
+    "description": "Ask AI to answer four computational questions",
+    "inputSchema": {
+      "properties": {
+        "expression": {
+          "description": "Four operational expressions",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "calculator"
+  }
+]

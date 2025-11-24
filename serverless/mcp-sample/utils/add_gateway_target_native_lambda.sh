@@ -60,7 +60,7 @@ if [ -f "${MCPPROJECTPATH}/requirements-layer.txt" ]; then
     # 默认会在名字后增加python版本和架构，如果需要去掉屏蔽这一行
     LAYER_NAME="${MCP_SERVER}-layer-py${PYVER//./}-${ARCH}"
 
-    local EXISTING_LAYER=$(aws lambda list-layer-versions \
+    EXISTING_LAYER=$(aws lambda list-layer-versions \
         --layer-name $LAYER_NAME \
         --region $REGION \
         --query 'LayerVersions[0].LayerVersionArn' \
@@ -90,10 +90,11 @@ if [ -f "${MCPPROJECTPATH}/requirements-layer.txt" ]; then
 
       rm -f $LAYER_NAME-layer.zip
       cd - > /dev/null
+      echo "Layer创建完成: ${LAYER_ARN}"
     else
       LAYER_ARN=${EXISTING_LAYER}
+      echo "Layer已存在: ${LAYER_ARN}"
     fi
-    echo "Layer创建完成: ${LAYER_ARN}"
   LAYER_CMD="--layers ${LAYER_ARN}"
 else
   LAYER_CMD=
@@ -124,24 +125,24 @@ aws iam attach-role-policy \
     --region us-east-1 \
     --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole || echo '默认策略已经存在，跳过'
 
-cp -r ${MCPPROJECTPATH} $TEMP_DIR
+cp -r ${MCPPROJECTPATH}/* $TEMP_DIR
 cd $TEMP_DIR
 # 使用 requirements.txt，安装python的依赖
 if [ -f "requirements.txt" ]; then
   pip install --only-binary=:all: -t . -r requirements.txt
 fi
-zip -r function.zip . -x "python/*" -x "interface.json" -x "requirements*.json" -x "execution-policy.json"
+zip -9 -r function.zip . -x "python/*" -x "interface.json" -x "requirements*.txt" -x "execution-policy.json"
 
 echo "创建/更新Lambda函数..."
 FUNCTION_ARN=$(aws lambda create-function \
     --function-name mcp-${MCP_SERVER} \
     --runtime python$PYVER \
     --role arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/$ROLE_NAME \
-    --handler lambda_handler.handler \
+    --handler lambda_functions.lambda_handler \
     --zip-file fileb://function.zip \
     --timeout 300 --memory-size 256 ${LAYER_CMD} \
     --region $REGION \
-    --query 'FunctionArn' --output text 2>/dev/null || \
+    --query 'FunctionArn' --output text 2> /dev/null || \
 aws lambda update-function-code \
         --function-name mcp-${MCP_SERVER} \
         --zip-file fileb://function.zip \

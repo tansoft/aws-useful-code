@@ -47,7 +47,7 @@
 ### 开发一个原生 Lambda MCP
 
 * 在 mcp-sample/native_lambda 中创建一个目录，如 my-test，注意gateway的名字不支持_，因此名字中不要带上_ ：
-* 生成 lambda_handler.py 并实现标准 handler 函数。
+* 生成 lambda_functions.py 并实现标准 lambda_handler 函数。
 * 需要依赖的库文件，填写 requirements.txt。
 * 太大的库或不想写在lambda里，可以填写 requirements-layer.txt，自动制作lambda layer。
 * 填写 interface.json ，包括mcp说明，输入参数，输出参数等。

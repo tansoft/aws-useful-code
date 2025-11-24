@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def handler(event, context):
+def lambda_handler(event, context):
     """AWS News MCP Handler - Get latest AWS news"""
     logger.info(f"AWS News MCP event: {json.dumps(event, default=str)}")
 
