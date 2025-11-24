@@ -8,9 +8,10 @@ source "${CURPATHCURPATH}/../.${PROJECT}-cognito-s2s.txt"
 aws cognito-idp delete-user-pool-domain --domain $DOMAIN_PREFIX --user-pool-id $POOL_ID --region $REGION --no-cli-pager
 sleep 2
 aws cognito-idp delete-user-pool --user-pool-id $POOL_ID --region $REGION --no-cli-pager
-echo "Resources deleted，Delete configure file .${PROJECT}-cognito-s2s.txt(yes/no)?"
+echo 
 
-read suredelete
-if [ "$suredelete" == "yes" ]; then
+read -p "Resources deleted，Delete configure file .${PROJECT}-cognito-s2s.txt (y/n)?" -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     rm -f "${CURPATHCURPATH}/../.${PROJECT}-cognito-s2s.txt"
 fi

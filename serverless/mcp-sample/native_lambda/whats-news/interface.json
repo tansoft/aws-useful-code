@@ -1,0 +1,15 @@
+[
+  {
+    "description": "Get the latest AWS news and announcements",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "description": "Number of news items to return (default: 50)",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_latest_aws_news"
+  }
+]
