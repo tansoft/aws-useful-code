@@ -49,7 +49,7 @@ func main() {
 
         client := dynamodb.NewFromConfig(cfg)
         stats := &Stats{}
-        values := map[string][]byte{
+        values = map[string][]byte{
                         "package1": make([]byte, 1120),
                         "package2": make([]byte, 1400),
                         "package3": make([]byte, 2100),
