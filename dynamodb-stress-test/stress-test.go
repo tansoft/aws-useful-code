@@ -37,14 +37,7 @@ type Stats struct {
         batchReadErrors  int64
 }
 
-values := map[string][]byte{
-		"package1": make([]byte, 1120),
-		"package2": make([]byte, 1400),
-		"package3": make([]byte, 2100),
-		"package4": make([]byte, 1980),
-		"package5": make([]byte, 1460),
-		"package6": make([]byte, 320),
-}
+var values map[string][]byte
 
 func main() {
         flag.Parse()
@@ -56,6 +49,15 @@ func main() {
 
         client := dynamodb.NewFromConfig(cfg)
         stats := &Stats{}
+        values := map[string][]byte{
+                        "package1": make([]byte, 1120),
+                        "package2": make([]byte, 1400),
+                        "package3": make([]byte, 2100),
+                        "package4": make([]byte, 1980),
+                        "package5": make([]byte, 1460),
+                        "package6": make([]byte, 320),
+        }
+
         ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*duration)*time.Second)
         defer cancel()
 
