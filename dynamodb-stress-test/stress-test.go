@@ -66,24 +66,29 @@ func main() {
         // 启动写入线程
         for i := 0; i < *writeThreads; i++ {
                 wg.Add(1)
+                // 打散请求
+                time.Sleep(10 * time.Millisecond)
                 go writeWorker(ctx, &wg, client, stats, i)
         }
 
         // 启动读取线程
         for i := 0; i < *readThreads; i++ {
                 wg.Add(1)
+                time.Sleep(10 * time.Millisecond)
                 go readWorker(ctx, &wg, client, stats, i)
         }
 
         // 启动批量写入线程
         for i := 0; i < *batchWriteThreads; i++ {
                 wg.Add(1)
+                time.Sleep(10 * time.Millisecond)
                 go batchWriteWorker(ctx, &wg, client, stats, i)
         }
 
         // 启动批量读取线程
         for i := 0; i < *batchReadThreads; i++ {
                 wg.Add(1)
+                time.Sleep(10 * time.Millisecond)
                 go batchReadWorker(ctx, &wg, client, stats, i)
         }
 

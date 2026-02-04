@@ -22,13 +22,29 @@ values := map[string][]byte{
 
 ```bash
 go mod tidy
-go run bench.go
+go run stress-test.go
+
+Usage of stress-test:
+  -r int
+        Number of read threads (default 10)
+  -w int
+        Number of write threads (default 10)
+  -br int
+        Number of batch read threads (default 10)
+  -bw int
+        Number of batch write threads (default 10)
+  -region string
+        AWS region (default "ap-northeast-1")
+  -t int
+        Test duration in seconds (default 3600)
+  -table string
+        DynamoDB table name (default "xuf")
 ```
 
 ## 单Item读取测试
 
 ```bash
-go run bench.go --write-threads
+go run stress-test.go -r 100 -w 0 -br 0 -bw 0 -t 3600
 ```
 
 ## 批量Item读取测试
