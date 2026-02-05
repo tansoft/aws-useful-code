@@ -9,21 +9,19 @@ while true; do
     fi
 done
 
-go env
-
-# 新建环境，确保git变量正确
-/bin/bash << 'EOF'
-
-go env
-
-sleep 20
-
-go env
+while true; do
+    date
+    ps aux | grep go
+    go env
+    ls -l /usr/lib/golang/
+    if [[ -f "/usr/lib/golang/go.env" ]]; then
+        break
+    fi
+    sleep 5
+done
 
 cd /usr/local/src/ && git clone https://github.com/tansoft/aws-useful-code
 cd aws-useful-code/dynamodb-stress-test/
 go mod tidy
 go build -o stress-test stress-test.go
 ./stress-test $*
-
-EOF
