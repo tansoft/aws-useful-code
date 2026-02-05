@@ -14,6 +14,9 @@ aws ec2 run-instances \
     --count ${instance_count} \
     --iam-instance-profile Name=${instance_profile} \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ddb-stress-test},{Key=CostCenter,Value=ddb-stress-test}]" \
+    --query 'Instances[*].InstanceId' \
+    --output json \
+    --region ${deploy_region} \
     --user-data "#!/bin/bash
 sleep 10
 nohup bash -c \"curl -s 'https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/dynamodb-stress-test/prepare-env.sh' | sed 's/\$\*/$*/g' | bash\" > /tmp/init_script.log 2>&1 &
