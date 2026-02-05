@@ -22,6 +22,13 @@ done
 
 cd /usr/local/src/ && git clone https://github.com/tansoft/aws-useful-code
 cd aws-useful-code/dynamodb-stress-test/
-go mod tidy
-go build -o stress-test stress-test.go
-./stress-test $*
+
+while true; do
+    date
+    if go mod tidy; then
+        echo "tidy finish"
+    fi
+    go build -o stress-test stress-test.go
+    ./stress-test $*
+    sleep 5
+done
