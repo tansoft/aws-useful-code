@@ -19,5 +19,5 @@ aws ec2 run-instances \
     --region ${deploy_region} \
     --user-data "#!/bin/bash
 sleep 10
-nohup bash -c \"curl -s 'https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/dynamodb-stress-test/prepare-env.sh' | sed 's/\$\*/$*/g' | bash\" > /tmp/init_script.log 2>&1 &
+nohup bash -c \"curl -Ls 'https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/dynamodb-stress-test/prepare-env.sh' | sed 's/\$\*/$*/g' | bash\" > /tmp/init_script.log 2>&1 &
 "

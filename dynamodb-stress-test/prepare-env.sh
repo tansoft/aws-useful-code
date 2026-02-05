@@ -9,8 +9,13 @@ while true; do
     fi
 done
 
+# 新建环境，确保git变量正确
+/bin/bash << 'EOF'
+
 cd /usr/local/src/ && git clone https://github.com/tansoft/aws-useful-code
 cd aws-useful-code/dynamodb-stress-test/
 go mod tidy
 go build -o stress-test stress-test.go
 ./stress-test $*
+
+EOF
