@@ -7,7 +7,6 @@ deploy_region="ap-northeast-1"
 # 请提前创建好这个role允许ddb的访问
 instance_profile="ec2-admin"
 
-# sed 替换 $* 目的是把运行参数替换到启动脚本中运行程序
 aws ec2 run-instances \
     --image-id resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-${arch} \
     --instance-type ${instance_type} \
@@ -18,6 +17,22 @@ aws ec2 run-instances \
     --output json \
     --region ${deploy_region} \
     --user-data "#!/bin/bash
-sleep 10
-nohup bash -c \"curl -Ls 'https://github.com/tansoft/aws-useful-code/raw/refs/heads/main/dynamodb-stress-test/prepare-env.sh' | sed 's/\$\*/$*/g' | bash\" > /tmp/init_script.log 2>&1 &
+while true; do
+    if dnf install -y git golang; then
+        if dnf list installed git golang; then
+            break
+        fi
+    fi
+    sleep 5
+done
+cd /usr/local/src/ && git clone https://github.com/tansoft/aws-useful-code
+cd aws-useful-code/dynamodb-stress-test/
+export GOCACHE=/root/.cache/go-build
+export GOMODCACHE=/root/go/pkg/mod
+go mod tidy
+go build -o stress-test stress-test.go
+./stress-test $*
 "
+
+# 运行远端脚本的方式，sed 替换 $* 目的是把运行参数替换到启动脚本中运行程序
+# nohup bash -c \"curl -Ls 'http://sth/other-script' | sed 's/\$\*/$*/g' | bash\" > /tmp/init_script.log 2>&1 &
