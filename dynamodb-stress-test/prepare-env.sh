@@ -9,8 +9,16 @@ while true; do
     fi
 done
 
+go env
+
 # 新建环境，确保git变量正确
 /bin/bash << 'EOF'
+
+go env
+
+sleep 20
+
+go env
 
 cd /usr/local/src/ && git clone https://github.com/tansoft/aws-useful-code
 cd aws-useful-code/dynamodb-stress-test/
