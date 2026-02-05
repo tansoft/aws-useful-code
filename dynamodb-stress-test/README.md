@@ -3,7 +3,7 @@
 ## 测试信息
 
 * c7gn.4xlarge 测试机
-* DynamoDB 预置 RCU/WCU 40K（Account Quota）
+* DynamoDB 预置 RCU/WCU 40K（Account Quota Limit）
 
 ## 测试样本
 
@@ -41,14 +41,14 @@ Usage of stress-test:
         DynamoDB table name (default "xuf")
 ```
 
-## 单Item读取测试
+直接测试
 
 ```bash
 go run stress-test.go -r 100 -w 0 -br 0 -bw 0 -t 3600
 ```
 
-## 批量Item读取测试
+批量拉机器测试
 
-## 单Item写入测试
-
-## 批量Item写入测试
+```bash
+./start-stress.sh -r 100 -w 0 -br 0 -bw 0 -t 3600
+```
