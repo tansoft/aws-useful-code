@@ -132,8 +132,52 @@ aws application-autoscaling put-scaling-policy \
 
 ### 标准测试（多列模式）
 
-```bash
-```
+单线程测试命令区间，DynamoDB 按需模式
+
+|  | 测试时间s | 成功 | 失败 | QPS | 延迟ms | 参数 |
+|-----|-----|-----|-----|-----|-----|-----|
+| 批量写 | 30 | 13725 | 0 | 457.5 | 2.18 | -t 30 -batchWriteItem 1 |
+| 批量读 | 10 | 47800 | 0 | 4780 | 0.21 | -t 10 -batchGetItem 1 |
+| 批量删除 | 30 | 26250 | 0 | 875 | 1.14 | -t 30 -batchDeleteItem 1 |
+| 单条写入 | 30 | 6083 | 0 | 202.77 | 4.93 | -t 30 -putItem 1 |
+| 单条更新 | 30 | 6862 | 0 | 228.73 | 4.37 | -t 30 -updateItem 1 |
+| 单条取（命中） | 10 | 4216 | 0 | 421.6 | 2.37 | -t 10 -getItem 1 |
+| Query（无需） | 10 | 3330 | 0 | 333 | 3.0 | -t 10 -query 1 |
+| Scan | 10 | 727 | 0 | 72.7 | 13.75 | -t 10 -scan 1 |
+| 单条删除 | 30 | 5909 | 0 | 196.97 | 5.08 | -t 30 -deleteItem 1 |
+| 单条取（Miss） | 10 | 8325 | 0 | 832.5 | 1.20 | -t 10 -getItem 1 |
+Total Reads: 4686 / 0
+Read QPS: 468.60
+
+column
+Total Batch Writes: 12600 / 0, QPS: 420.00, Latency: 2.38ms
+Total Batch Reads: 53900 / 0, QPS: 5390.00, Latency: 0.19ms
+Total Reads: 3797 / 0, QPS: 379.70, Latency: 2.63ms
+Total Queries: 4536 / 0, QPS: 453.60, Latency: 2.20ms
+Total Updates: 7312 / 0, QPS: 243.73, Latency: 4.10ms
+Total Batch Deletes: 30825 / 0, QPS: 1027.50, Latency: 0.97ms
+Total Writes: 6082 / 0, QPS: 202.73, Latency: 4.93ms
+Total Reads: 5749 / 0, QPS: 574.90, Latency: 1.74ms
+Total Queries: 3380 / 0, QPS: 338.00, Latency: 2.96ms
+Total Scans: 680 / 0, QPS: 68.00, Latency: 14.71ms
+Total Deletes: 6034 / 0, QPS: 201.13, Latency: 4.97ms
+Total Reads: 3909 / 0, QPS: 390.90, Latency: 2.56ms
+Total Queries: 4201 / 0, QPS: 420.10, Latency: 2.38ms
+
+row
+Total Batch Writes: 35928 / 0, QPS: 1197.60, Latency: 0.84ms
+Total Batch Reads: 61000 / 0, QPS: 6100.00, Latency: 0.16ms
+Total Reads: 4483 / 0, QPS: 448.30, Latency: 2.23ms
+Total Queries: 3921 / 0, QPS: 392.10, Latency: 2.55ms
+Total Updates: 9216 / 0, QPS: 307.20, Latency: 3.26ms
+Total Batch Deletes: 37008 / 0, QPS: 1233.60, Latency: 0.81ms
+Total Writes: 6665 / 0, QPS: 222.17, Latency: 4.50ms
+Total Reads: 7956 / 0, QPS: 795.60, Latency: 1.26ms
+Total Queries: 4497 / 0, QPS: 449.70, Latency: 2.22ms
+Total Scans: 1196 / 0, QPS: 119.60, Latency: 8.36ms
+Total Deletes: 6212 / 0, QPS: 207.07, Latency: 4.83ms
+Total Reads: 4286 / 0, QPS: 428.60, Latency: 2.33ms
+Total Queries: 3762 / 0, QPS: 376.20, Latency: 2.66ms
 
 ## 带SortKey测试（多行模式）
 
@@ -144,7 +188,9 @@ aws application-autoscaling put-scaling-policy \
 分区键：id
 排序键：sk
 取值：val
-在putItem/batchPutItem/getItem/batchGetItem时，会通过上述固定随机数方式，计算得出每次读写的单列名字。
+在putItem/getItem时，会通过上述固定随机数方式，计算得出每次读写的单列名字。
+在BatchWriteItem/BatchDeleteItem逻辑中，会把key对应的所有package进行写入/删除。
+在query逻辑中，会返回key的所有内容。
 
 ### 建表语句参考
 
