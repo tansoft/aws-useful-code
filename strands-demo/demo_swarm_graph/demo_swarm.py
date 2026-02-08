@@ -5,6 +5,10 @@ agent = Agent(tools=[swarm, file_read])
 # demo_data.csv 可以使用 demo_data.py 生成
 print(agent("Use a swarm of 4 agents to analyze 'demo_data.csv' dataset and identify trends. use chinese to reply."))
 
+
+
+
+# ------------------------ 以下是测试样例的输出 ------------------------ #
 '''
 python demo_swarm.py
 我将为您创建一个由4个专业AI代理组成的团队来分析'demo_data.csv'数据集并识别趋势。让我先读取数据集，然后启动代理团队。

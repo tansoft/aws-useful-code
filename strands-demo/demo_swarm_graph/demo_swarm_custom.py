@@ -40,6 +40,10 @@ print(f"Status: {result.status}")
 print(f"Node history: {[node.node_id for node in result.node_history]}")
 # Node history: ['researcher', 'architect', 'coder', 'reviewer']
 
+
+
+
+# ------------------------ 以下是测试样例的输出 ------------------------ #
 # 搜索关键字：handoff_to_agent
 
 '''

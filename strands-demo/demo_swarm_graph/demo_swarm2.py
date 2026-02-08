@@ -11,10 +11,14 @@ agents = [
 swarm = Swarm(agents)
 result = swarm("AI对人类发展的影响是什么？")
 
+
+
+
+# ------------------------ 以下是测试样例的输出 ------------------------ #
 # 搜索 handoff_to_agent
 
 '''
-python demo_swarm_collaborative.py
+python demo_swarm2.py
 这是一个深刻而复杂的哲学问题，涉及技术哲学、人类学和未来学的多个维度。让我从几个核心角度来思考AI对人类发展的影响：
 
 ## 认知与智能层面的影响

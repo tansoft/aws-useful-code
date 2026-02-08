@@ -40,6 +40,7 @@ builder.add_edge("classifier", "business_specialist", condition=is_business)
 
 graph = builder.build()
 
+# 例如询问python运行的错误
 print("\n👨 可以问我技术问题或者商务问题，输入 'exit' 退出.\n")
 while True:
     user_input = input("\nYou > ")

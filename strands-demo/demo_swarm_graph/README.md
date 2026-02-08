@@ -4,7 +4,7 @@
 
 * Graph 可以进行条件分支，循环执行，并发执行等多种形态。
 
-## [demo_swarm.py](demo_swarm.py) [demo_swarm2.py](demo_swarm2.py) 
+# [demo_swarm.py](demo_swarm.py) [demo_swarm2.py](demo_swarm2.py) 
 
 演示的是直接在agent对话中说明要用多个agent进行分析，即可自动实现，用于需要多个agent深度思考的场景。
 
@@ -35,7 +35,7 @@ result = swarm("设计和实现一个简单的用于 APP 的 REST API 接口")
 
 # [demo_swarm_collaborative.py](demo_swarm_collaborative.py)
 
-可以是指定agent从不同方向进行总结，最后的agent汇总提炼观点再合并输出。
+可以是指定agent从不同方向进行总结，最后judge汇总提炼观点再合并输出。
 
 ```python
 swarm = Swarm(
@@ -64,9 +64,9 @@ builder.add_edge("classifier", "business_specialist", condition=is_business)
 
 ```mermaid
 graph TD
-    Start([用户输入]) --> Classifier[Classifier<br/>分类器]
-    Classifier -->|is_technical| Tech[Tech Specialist<br/>技术专家]
-    Classifier -->|is_business| Business[Business Specialist<br/>商业专家]
+    Start([用户输入]) --> Classifier["Classifier<br>分类器"]
+    Classifier -->|is_technical| Tech["Tech Specialist<br>技术专家"]
+    Classifier -->|is_business| Business["Business Specialist<br>商业专家"]
     Tech --> End([输出结果])
     Business --> End
 ```
@@ -90,10 +90,10 @@ builder.add_edge("reviewer", "publisher", condition=is_approved)
 
 ```mermaid
 graph TD
-    Start([用户输入]) --> Writer[Draft Writer<br/>初稿撰写]
-    Writer --> Reviewer[Reviewer<br/>审查员]
+    Start([用户输入]) --> Writer["Draft Writer<br>初稿撰写"]
+    Writer --> Reviewer["Reviewer<br>审查员"]
     Reviewer -->|needs_revision| Writer
-    Reviewer -->|is_approved| Publisher[Publisher<br/>发布者]
+    Reviewer -->|is_approved| Publisher["Publisher<br>发布者"]
     Publisher --> End([发布完成])
     
     style Writer fill:#e1f5ff
@@ -128,13 +128,13 @@ builder.add_edge("worker3", "aggregator")
 
 ```mermaid
 graph TD
-    Start([用户输入]) --> Coordinator[Coordinator<br/>协调器]
+    Start([用户输入]) --> Coordinator["Coordinator<br>协调器"]
     
-    Coordinator --> Worker1[Worker 1<br/>视角1分析]
-    Coordinator --> Worker2[Worker 2<br/>视角2分析]
-    Coordinator --> Worker3[Worker 3<br/>视角3分析]
+    Coordinator --> Worker1["Worker 1<br>视角1分析"]
+    Coordinator --> Worker2["Worker 2<br>视角2分析"]
+    Coordinator --> Worker3["Worker 3<br>视角3分析"]
     
-    Worker1 --> Aggregator[Aggregator<br/>结果聚合]
+    Worker1 --> Aggregator["Aggregator<br>结果聚合"]
     Worker2 --> Aggregator
     Worker3 --> Aggregator
     
