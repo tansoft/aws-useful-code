@@ -41,19 +41,19 @@ aws dynamodb get-item --table-name multi-column --key '{"id":{"S":"abcd"}}'
 ```bash
 aws dynamodb create-table --table-name multi-row \
   --attribute-definitions AttributeName=id,AttributeType=S \
-    AttributeName=type,AttributeType=S \
+    AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
-    AttributeName=type,KeyType=RANGE \
+    AttributeName=sk,KeyType=RANGE \
   --billing-mode PAY_PER_REQUEST
 # 更新单列
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data1"},"data":{"B":"AAA="}}'
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data2"},"data":{"B":"AAA="}}'
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data3"},"data":{"B":"AAA="}}'
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data4"},"data":{"B":"AAA="}}'
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data5"},"data":{"B":"AAA="}}'
-aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"type":{"S":"data6"},"data":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data1"},"val":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data2"},"val":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data3"},"val":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data4"},"val":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data5"},"val":{"B":"AAA="}}'
+aws dynamodb put-item --table-name multi-row --item '{"id":{"S":"abcd"},"sk":{"S":"data6"},"val":{"B":"AAA="}}'
 # 获取单列
-aws dynamodb get-item --table-name multi-row --key '{"id":{"S":"abcd"},"type":{"S":"data6"}}'
+aws dynamodb get-item --table-name multi-row --key '{"id":{"S":"abcd"},"sk":{"S":"data6"}}'
 # 获取全部内容
 aws dynamodb query --table-name multi-row --key-condition-expression "id=:id" --expression-attribute-values '{":id":{"S":"abcd"}}'
 ```

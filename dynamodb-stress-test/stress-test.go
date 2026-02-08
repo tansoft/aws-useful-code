@@ -7,6 +7,7 @@ import (
         "fmt"
         "log"
         "math/rand"
+        "os"
         "sync"
         "sync/atomic"
         "time"
@@ -14,33 +15,112 @@ import (
         "github.com/aws/aws-sdk-go-v2/config"
         "github.com/aws/aws-sdk-go-v2/service/dynamodb"
         "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+        "gopkg.in/yaml.v3"
 )
 
 var (
-        tableName         = flag.String("table", "xuf", "DynamoDB table name")
-        region            = flag.String("region", "ap-northeast-1", "AWS region")
-        writeThreads      = flag.Int("w", 10, "Number of write threads")
-        readThreads       = flag.Int("r", 10, "Number of read threads")
-        batchWriteThreads = flag.Int("bw", 10, "Number of batch write threads")
-        batchReadThreads  = flag.Int("br", 10, "Number of batch read threads")
+        tableName         = flag.String("table", "stress-test", "DynamoDB table name")
+        region            = flag.String("region", "us-east-1", "AWS region")
+        writeThreads      = flag.Int("putItem", 0, "Number of write threads")
+        readThreads       = flag.Int("getItem", 0, "Number of read threads")
+        batchWriteThreads = flag.Int("batchWriteItem", 0, "Number of batch write threads")
+        batchReadThreads  = flag.Int("batchGetItem", 0, "Number of batch read threads")
+        batchDeleteThreads = flag.Int("batchDeleteItem", 0, "Number of batch delete threads")
+        queryThreads      = flag.Int("query", 0, "Number of query threads")
+        scanThreads       = flag.Int("scan", 0, "Number of scan threads")
+        updateThreads     = flag.Int("updateItem", 0, "Number of update threads")
+        deleteThreads     = flag.Int("deleteItem", 0, "Number of delete threads")
         duration          = flag.Int("t", 3600, "Test duration in seconds")
+        useSortKey        = flag.Bool("sortkey", false, "Use sort key in table schema")
 )
 
 type Stats struct {
-        writeCount      int64
-        readCount       int64
-        writeErrors     int64
-        readErrors      int64
-        batchWriteCount int64
-        batchReadCount  int64
+        writeCount       int64
+        readCount        int64
+        writeErrors      int64
+        readErrors       int64
+        batchWriteCount  int64
+        batchReadCount   int64
         batchWriteErrors int64
         batchReadErrors  int64
+        batchDeleteCount int64
+        batchDeleteErrors int64
+        queryCount       int64
+        queryErrors      int64
+        scanCount        int64
+        scanErrors       int64
+        updateCount      int64
+        updateErrors     int64
+        deleteCount      int64
+        deleteErrors     int64
 }
 
-var values map[string][]byte
+type KeyGenerator struct {
+        mu           sync.Mutex
+        r            *rand.Rand
+        packageNames []string
+}
+
+func NewKeyGenerator(seed int64, packageNames []string) *KeyGenerator {
+        return &KeyGenerator{
+                r:            rand.New(rand.NewSource(seed)),
+                packageNames: packageNames,
+        }
+}
+
+func (kg *KeyGenerator) Next() string {
+        kg.mu.Lock()
+        defer kg.mu.Unlock()
+        return fmt.Sprintf("%016x%016x", kg.r.Uint64(), kg.r.Uint64())
+}
+
+func (kg *KeyGenerator) NextSortKey() (string, string) {
+        kg.mu.Lock()
+        defer kg.mu.Unlock()
+        key := fmt.Sprintf("%016x%016x", kg.r.Uint64(), kg.r.Uint64())
+        sk := kg.packageNames[kg.r.Intn(len(kg.packageNames))]
+        return key, sk
+}
+
+var (
+        values       map[string][]byte
+        packageNames []string
+        writeKeyGen  *KeyGenerator
+        readKeyGen   *KeyGenerator
+)
+
+type PackageConfig struct {
+        Packages map[string]int `yaml:"packages"`
+}
+
+func loadPackages(filename string) (map[string][]byte, []string, error) {
+        data, err := os.ReadFile(filename)
+        if err != nil {
+                return nil, nil, err
+        }
+
+        var cfg PackageConfig
+        if err := yaml.Unmarshal(data, &cfg); err != nil {
+                return nil, nil, err
+        }
+
+        values := make(map[string][]byte)
+        names := make([]string, 0, len(cfg.Packages))
+        for name, size := range cfg.Packages {
+                values[name] = make([]byte, size)
+                names = append(names, name)
+        }
+        return values, names, nil
+}
 
 func main() {
         flag.Parse()
+
+        var err error
+        values, packageNames, err = loadPackages("package.yaml")
+        if err != nil {
+                log.Fatal(err)
+        }
 
         cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(*region))
         if err != nil {
@@ -49,14 +129,8 @@ func main() {
 
         client := dynamodb.NewFromConfig(cfg)
         stats := &Stats{}
-        values = map[string][]byte{
-                        "package1": make([]byte, 1120),
-                        "package2": make([]byte, 1400),
-                        "package3": make([]byte, 2100),
-                        "package4": make([]byte, 1980),
-                        "package5": make([]byte, 1460),
-                        "package6": make([]byte, 320),
-        }
+        writeKeyGen = NewKeyGenerator(1, packageNames)
+        readKeyGen = NewKeyGenerator(1, packageNames)
 
         ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*duration)*time.Second)
         defer cancel()
@@ -92,6 +166,41 @@ func main() {
                 go batchReadWorker(ctx, &wg, client, stats, i)
         }
 
+        // 启动批量删除线程
+        for i := 0; i < *batchDeleteThreads; i++ {
+                wg.Add(1)
+                time.Sleep(time.Duration(i) * time.Millisecond)
+                go batchDeleteWorker(ctx, &wg, client, stats, i)
+        }
+
+        // 启动Query线程
+        for i := 0; i < *queryThreads; i++ {
+                wg.Add(1)
+                time.Sleep(time.Duration(i) * time.Millisecond)
+                go queryWorker(ctx, &wg, client, stats, i)
+        }
+
+        // 启动Scan线程
+        for i := 0; i < *scanThreads; i++ {
+                wg.Add(1)
+                time.Sleep(time.Duration(i) * time.Millisecond)
+                go scanWorker(ctx, &wg, client, stats, i)
+        }
+
+        // 启动Update线程
+        for i := 0; i < *updateThreads; i++ {
+                wg.Add(1)
+                time.Sleep(time.Duration(i) * time.Millisecond)
+                go updateWorker(ctx, &wg, client, stats, i)
+        }
+
+        // 启动Delete线程
+        for i := 0; i < *deleteThreads; i++ {
+                wg.Add(1)
+                time.Sleep(time.Duration(i) * time.Millisecond)
+                go deleteWorker(ctx, &wg, client, stats, i)
+        }
+
         // 统计输出
         go printStats(ctx, stats)
 
@@ -101,13 +210,14 @@ func main() {
 
 func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
-        r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)))
 
         item := map[string]types.AttributeValue{
                 "id": &types.AttributeValueMemberS{Value: "aaa"},
         }
-        for k, v := range values {
-                item[k] = &types.AttributeValueMemberB{Value: v}
+        if ! *useSortKey {
+                for k, v := range values {
+                        item[k] = &types.AttributeValueMemberB{Value: v}
+                }
         }
 
         for {
@@ -115,8 +225,18 @@ func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                 case <-ctx.Done():
                         return
                 default:
-                        key := fmt.Sprintf("%016x%016x", r.Uint64(), r.Uint64())
-                        item["id"] = &types.AttributeValueMemberS{Value: key}
+                        var key, sk string
+                        if *useSortKey {
+                                key, sk = writeKeyGen.NextSortKey()
+                                fmt.Println(key, sk)
+                                item["id"] = &types.AttributeValueMemberS{Value: key}
+                                item["sk"] = &types.AttributeValueMemberS{Value: sk}
+                                item["val"] = &types.AttributeValueMemberB{Value: values[sk]}
+                        } else {
+                                key = writeKeyGen.Next()
+                                fmt.Println(key)
+                                item["id"] = &types.AttributeValueMemberS{Value: key}
+                        }
                         _, err := client.PutItem(ctx, &dynamodb.PutItemInput{
                                 TableName: tableName,
                                 Item:      item,
@@ -132,19 +252,27 @@ func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
 
 func readWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
-        r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)*1000))
 
         for {
                 select {
                 case <-ctx.Done():
                         return
                 default:
-                        key := fmt.Sprintf("%016x%016x", r.Uint64(), r.Uint64())
+                        var key, sk string
+                        keyMap := map[string]types.AttributeValue{}
+                        if *useSortKey {
+                                key, sk = readKeyGen.NextSortKey()
+                                fmt.Println(key, sk)
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                keyMap["sk"] = &types.AttributeValueMemberS{Value: sk}
+                        } else {
+                                key = readKeyGen.Next()
+                                fmt.Println(key)
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                        }
                         _, err := client.GetItem(ctx, &dynamodb.GetItemInput{
                                 TableName: tableName,
-                                Key: map[string]types.AttributeValue{
-                                        "id": &types.AttributeValueMemberS{Value: key},
-                                },
+                                Key: keyMap,
                         })
                         if err == nil {
                                 atomic.AddInt64(&stats.readCount, 1)
@@ -157,7 +285,6 @@ func readWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
 
 func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
-        r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)*10000))
         batchCount := 25
 
         for {
@@ -167,12 +294,21 @@ func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.
                 default:
                         var requests []types.WriteRequest
                         for i := 0; i < batchCount; i++ {
-                                key := fmt.Sprintf("%016x%016x", r.Uint64(), r.Uint64())
-                                item := map[string]types.AttributeValue{
-                                        "id": &types.AttributeValueMemberS{Value: key},
-                                }
-                                for k, v := range values {
-                                        item[k] = &types.AttributeValueMemberB{Value: v}
+                                var key, sk string
+                                item := map[string]types.AttributeValue{}
+                                if *useSortKey {
+                                        key, sk = writeKeyGen.NextSortKey()
+                                        fmt.Println(key,sk)
+                                        item["id"] = &types.AttributeValueMemberS{Value: key}
+                                        item["sk"] = &types.AttributeValueMemberS{Value: sk}
+                                        item["val"] = &types.AttributeValueMemberB{Value: values[sk]}
+                                } else {
+                                        key = writeKeyGen.Next()
+                                        fmt.Println(key)
+                                        item["id"] = &types.AttributeValueMemberS{Value: key}
+                                        for k, v := range values {
+                                                item[k] = &types.AttributeValueMemberB{Value: v}
+                                        }
                                 }
                                 requests = append(requests, types.WriteRequest{
                                         PutRequest: &types.PutRequest{Item: item},
@@ -195,7 +331,6 @@ func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.
 
 func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
-        r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)*100000))
         batchCount := 100
 
         for {
@@ -205,10 +340,19 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
                 default:
                         var keys []map[string]types.AttributeValue
                         for i := 0; i < batchCount; i++ {
-                                key := fmt.Sprintf("%016x%016x", r.Uint64(), r.Uint64())
-                                keys = append(keys, map[string]types.AttributeValue{
-                                        "id": &types.AttributeValueMemberS{Value: key},
-                                })
+                                var key, sk string
+                                keyMap := map[string]types.AttributeValue{}
+                                if *useSortKey {
+                                        key, sk = readKeyGen.NextSortKey()
+                                        fmt.Println(key, sk)
+                                        keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                        keyMap["sk"] = &types.AttributeValueMemberS{Value: sk}
+                                } else {
+                                        key = readKeyGen.Next()
+                                        fmt.Println(key)
+                                        keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                }
+                                keys = append(keys, keyMap)
                         }
 
                         _, err := client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
@@ -225,6 +369,164 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
         }
 }
 
+func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
+        defer wg.Done()
+        batchCount := 25
+
+        for {
+                select {
+                case <-ctx.Done():
+                        return
+                default:
+                        var requests []types.WriteRequest
+                        for i := 0; i < batchCount; i++ {
+                                var key, sk string
+                                keyMap := map[string]types.AttributeValue{}
+                                if *useSortKey {
+                                        key, sk = writeKeyGen.NextSortKey()
+                                        fmt.Println(key, sk)
+                                        keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                        keyMap["sk"] = &types.AttributeValueMemberS{Value: sk}
+                                } else {
+                                        key = writeKeyGen.Next()
+                                        fmt.Println(key)
+                                        keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                }
+                                requests = append(requests, types.WriteRequest{
+                                        DeleteRequest: &types.DeleteRequest{Key: keyMap},
+                                })
+                        }
+
+                        _, err := client.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+                                RequestItems: map[string][]types.WriteRequest{
+                                        *tableName: requests,
+                                },
+                        })
+                        if err == nil {
+                                atomic.AddInt64(&stats.batchDeleteCount, int64(batchCount))
+                        } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+                                atomic.AddInt64(&stats.batchDeleteErrors, 1)
+                        }
+                }
+        }
+}
+
+func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
+        defer wg.Done()
+
+        for {
+                select {
+                case <-ctx.Done():
+                        return
+                default:
+                        key := readKeyGen.Next()
+                        fmt.Println(key)
+                        _, err := client.Query(ctx, &dynamodb.QueryInput{
+                                TableName: tableName,
+                                KeyConditionExpression: &[]string{"id = :id"}[0],
+                                ExpressionAttributeValues: map[string]types.AttributeValue{
+                                        ":id": &types.AttributeValueMemberS{Value: key},
+                                },
+                        })
+                        if err == nil {
+                                atomic.AddInt64(&stats.queryCount, 1)
+                        } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+                                atomic.AddInt64(&stats.queryErrors, 1)
+                        }
+                }
+        }
+}
+
+func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
+        defer wg.Done()
+
+        for {
+                select {
+                case <-ctx.Done():
+                        return
+                default:
+                        _, err := client.Scan(ctx, &dynamodb.ScanInput{
+                                TableName: tableName,
+                                Limit: &[]int32{100}[0],
+                        })
+                        if err == nil {
+                                atomic.AddInt64(&stats.scanCount, 1)
+                        } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+                                atomic.AddInt64(&stats.scanErrors, 1)
+                        }
+                }
+        }
+}
+
+func updateWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
+        defer wg.Done()
+
+        for {
+                select {
+                case <-ctx.Done():
+                        return
+                default:
+                        key, sk := writeKeyGen.NextSortKey()
+                        keyMap := map[string]types.AttributeValue{}
+                        var updateExpr string
+                        if *useSortKey {
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                keyMap["sk"] = &types.AttributeValueMemberS{Value: sk}
+                                updateExpr = "SET val = :val"
+                        } else {
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                updateExpr = "SET " + sk + " = :val"
+                        }
+                        _, err := client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+                                TableName: tableName,
+                                Key: keyMap,
+                                UpdateExpression: &updateExpr,
+                                ExpressionAttributeValues: map[string]types.AttributeValue{
+                                        ":val": &types.AttributeValueMemberB{Value: values[sk]},
+                                },
+                        })
+                        if err == nil {
+                                atomic.AddInt64(&stats.updateCount, 1)
+                        } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+                                atomic.AddInt64(&stats.updateErrors, 1)
+                        }
+                }
+        }
+}
+
+func deleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
+        defer wg.Done()
+
+        for {
+                select {
+                case <-ctx.Done():
+                        return
+                default:
+                        var key, sk string
+                        keyMap := map[string]types.AttributeValue{}
+                        if *useSortKey {
+                                key, sk = writeKeyGen.NextSortKey()
+                                fmt.Println(key, sk)
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                                keyMap["sk"] = &types.AttributeValueMemberS{Value: sk}
+                        } else {
+                                key = writeKeyGen.Next()
+                                fmt.Println(key)
+                                keyMap["id"] = &types.AttributeValueMemberS{Value: key}
+                        }
+                        _, err := client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+                                TableName: tableName,
+                                Key: keyMap,
+                        })
+                        if err == nil {
+                                atomic.AddInt64(&stats.deleteCount, 1)
+                        } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+                                atomic.AddInt64(&stats.deleteErrors, 1)
+                        }
+                }
+        }
+}
+
 func printStats(ctx context.Context, stats *Stats) {
         ticker := time.NewTicker(5 * time.Second)
         defer ticker.Stop()
@@ -234,28 +536,83 @@ func printStats(ctx context.Context, stats *Stats) {
                 case <-ctx.Done():
                         return
                 case <-ticker.C:
-                        fmt.Printf("[%s] Writes: %d (errs:%d) | Reads: %d (errs:%d) | BatchWrites: %d (errs:%d) | BatchReads: %d (errs:%d)\n",
-                                time.Now().Format("15:04:05"),
-                                atomic.LoadInt64(&stats.writeCount),
-                                atomic.LoadInt64(&stats.writeErrors),
-                                atomic.LoadInt64(&stats.readCount),
-                                atomic.LoadInt64(&stats.readErrors),
-                                atomic.LoadInt64(&stats.batchWriteCount),
-                                atomic.LoadInt64(&stats.batchWriteErrors),
-                                atomic.LoadInt64(&stats.batchReadCount),
-                                atomic.LoadInt64(&stats.batchReadErrors))
+                        var output []string
+                        
+                        if wc := atomic.LoadInt64(&stats.writeCount); wc > 0 || atomic.LoadInt64(&stats.writeErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Writes: %d (errs:%d)", wc, atomic.LoadInt64(&stats.writeErrors)))
+                        }
+                        if rc := atomic.LoadInt64(&stats.readCount); rc > 0 || atomic.LoadInt64(&stats.readErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Reads: %d (errs:%d)", rc, atomic.LoadInt64(&stats.readErrors)))
+                        }
+                        if bwc := atomic.LoadInt64(&stats.batchWriteCount); bwc > 0 || atomic.LoadInt64(&stats.batchWriteErrors) > 0 {
+                                output = append(output, fmt.Sprintf("BatchWrites: %d (errs:%d)", bwc, atomic.LoadInt64(&stats.batchWriteErrors)))
+                        }
+                        if brc := atomic.LoadInt64(&stats.batchReadCount); brc > 0 || atomic.LoadInt64(&stats.batchReadErrors) > 0 {
+                                output = append(output, fmt.Sprintf("BatchReads: %d (errs:%d)", brc, atomic.LoadInt64(&stats.batchReadErrors)))
+                        }
+                        if bdc := atomic.LoadInt64(&stats.batchDeleteCount); bdc > 0 || atomic.LoadInt64(&stats.batchDeleteErrors) > 0 {
+                                output = append(output, fmt.Sprintf("BatchDeletes: %d (errs:%d)", bdc, atomic.LoadInt64(&stats.batchDeleteErrors)))
+                        }
+                        if qc := atomic.LoadInt64(&stats.queryCount); qc > 0 || atomic.LoadInt64(&stats.queryErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Queries: %d (errs:%d)", qc, atomic.LoadInt64(&stats.queryErrors)))
+                        }
+                        if sc := atomic.LoadInt64(&stats.scanCount); sc > 0 || atomic.LoadInt64(&stats.scanErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Scans: %d (errs:%d)", sc, atomic.LoadInt64(&stats.scanErrors)))
+                        }
+                        if uc := atomic.LoadInt64(&stats.updateCount); uc > 0 || atomic.LoadInt64(&stats.updateErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Updates: %d (errs:%d)", uc, atomic.LoadInt64(&stats.updateErrors)))
+                        }
+                        if dc := atomic.LoadInt64(&stats.deleteCount); dc > 0 || atomic.LoadInt64(&stats.deleteErrors) > 0 {
+                                output = append(output, fmt.Sprintf("Deletes: %d (errs:%d)", dc, atomic.LoadInt64(&stats.deleteErrors)))
+                        }
+                        
+                        if len(output) > 0 {
+                                fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), output[0])
+                                for i := 1; i < len(output); i++ {
+                                        fmt.Printf("          %s\n", output[i])
+                                }
+                        }
                 }
         }
 }
 
 func printFinalStats(stats *Stats) {
         fmt.Println("\n=== Final Statistics ===")
-        fmt.Printf("Total Writes: %d / %d\n", atomic.LoadInt64(&stats.writeCount), atomic.LoadInt64(&stats.writeErrors))
-        fmt.Printf("Total Reads: %d / %d\n", atomic.LoadInt64(&stats.readCount), atomic.LoadInt64(&stats.readErrors))
-        fmt.Printf("Total Batch Writes: %d / %d\n", atomic.LoadInt64(&stats.batchWriteCount), atomic.LoadInt64(&stats.batchWriteErrors))
-        fmt.Printf("Total Batch Reads: %d / %d\n", atomic.LoadInt64(&stats.batchReadCount), atomic.LoadInt64(&stats.batchReadErrors))
-        fmt.Printf("Write QPS: %.2f\n", float64(atomic.LoadInt64(&stats.writeCount))/float64(*duration))
-        fmt.Printf("Read QPS: %.2f\n", float64(atomic.LoadInt64(&stats.readCount))/float64(*duration))
-        fmt.Printf("Batch Write QPS: %.2f\n", float64(atomic.LoadInt64(&stats.batchWriteCount))/float64(*duration))
-        fmt.Printf("Batch Read QPS: %.2f\n", float64(atomic.LoadInt64(&stats.batchReadCount))/float64(*duration))
+        
+        if wc := atomic.LoadInt64(&stats.writeCount); wc > 0 || atomic.LoadInt64(&stats.writeErrors) > 0 {
+                fmt.Printf("Total Writes: %d / %d\n", wc, atomic.LoadInt64(&stats.writeErrors))
+                fmt.Printf("Write QPS: %.2f\n", float64(wc)/float64(*duration))
+        }
+        if rc := atomic.LoadInt64(&stats.readCount); rc > 0 || atomic.LoadInt64(&stats.readErrors) > 0 {
+                fmt.Printf("Total Reads: %d / %d\n", rc, atomic.LoadInt64(&stats.readErrors))
+                fmt.Printf("Read QPS: %.2f\n", float64(rc)/float64(*duration))
+        }
+        if bwc := atomic.LoadInt64(&stats.batchWriteCount); bwc > 0 || atomic.LoadInt64(&stats.batchWriteErrors) > 0 {
+                fmt.Printf("Total Batch Writes: %d / %d\n", bwc, atomic.LoadInt64(&stats.batchWriteErrors))
+                fmt.Printf("Batch Write QPS: %.2f\n", float64(bwc)/float64(*duration))
+        }
+        if brc := atomic.LoadInt64(&stats.batchReadCount); brc > 0 || atomic.LoadInt64(&stats.batchReadErrors) > 0 {
+                fmt.Printf("Total Batch Reads: %d / %d\n", brc, atomic.LoadInt64(&stats.batchReadErrors))
+                fmt.Printf("Batch Read QPS: %.2f\n", float64(brc)/float64(*duration))
+        }
+        if bdc := atomic.LoadInt64(&stats.batchDeleteCount); bdc > 0 || atomic.LoadInt64(&stats.batchDeleteErrors) > 0 {
+                fmt.Printf("Total Batch Deletes: %d / %d\n", bdc, atomic.LoadInt64(&stats.batchDeleteErrors))
+                fmt.Printf("Batch Delete QPS: %.2f\n", float64(bdc)/float64(*duration))
+        }
+        if qc := atomic.LoadInt64(&stats.queryCount); qc > 0 || atomic.LoadInt64(&stats.queryErrors) > 0 {
+                fmt.Printf("Total Queries: %d / %d\n", qc, atomic.LoadInt64(&stats.queryErrors))
+                fmt.Printf("Query QPS: %.2f\n", float64(qc)/float64(*duration))
+        }
+        if sc := atomic.LoadInt64(&stats.scanCount); sc > 0 || atomic.LoadInt64(&stats.scanErrors) > 0 {
+                fmt.Printf("Total Scans: %d / %d\n", sc, atomic.LoadInt64(&stats.scanErrors))
+                fmt.Printf("Scan QPS: %.2f\n", float64(sc)/float64(*duration))
+        }
+        if uc := atomic.LoadInt64(&stats.updateCount); uc > 0 || atomic.LoadInt64(&stats.updateErrors) > 0 {
+                fmt.Printf("Total Updates: %d / %d\n", uc, atomic.LoadInt64(&stats.updateErrors))
+                fmt.Printf("Update QPS: %.2f\n", float64(uc)/float64(*duration))
+        }
+        if dc := atomic.LoadInt64(&stats.deleteCount); dc > 0 || atomic.LoadInt64(&stats.deleteErrors) > 0 {
+                fmt.Printf("Total Deletes: %d / %d\n", dc, atomic.LoadInt64(&stats.deleteErrors))
+                fmt.Printf("Delete QPS: %.2f\n", float64(dc)/float64(*duration))
+        }
 }

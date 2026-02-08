@@ -6,7 +6,10 @@ require github.com/aws/aws-sdk-go-v2 v1.24.0 // indirect
 
 require github.com/aws/aws-sdk-go-v2/config v1.26.1
 
-require github.com/aws/aws-sdk-go-v2/service/dynamodb v1.26.6
+require (
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.26.6
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.12 // indirect
