@@ -35,4 +35,4 @@ aws dynamodb wait table-exists --table-name ${ctable}10 --region ${region}
 # times = 1000000000 KB / 5KB item-size / 25 batch / 20 threads / 1 ec2
 ./start-stress.sh 1 -table ${ctable} -t 86400 -batchWriteItem 20 -region ${region} -config package-size.yaml -times 400000
 # times = 10000000000 KB / 5KB item-size / 25 batch / 20 threads / 1 ec2
-./start-stress.sh 1 -table ${ctable} -t 86400 -batchWriteItem 20 -region ${region} -config package-size.yaml -times 4000000
+./start-stress.sh 1 -table ${ctable}10 -t 86400 -batchWriteItem 20 -region ${region} -config package-size.yaml -times 4000000
