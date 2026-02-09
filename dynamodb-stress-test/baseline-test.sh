@@ -1,12 +1,12 @@
 #!/bin/bash
 
-wsec=30
-rsec=10
+wsec=600
+rsec=300
 
-ctable=stress-test-multi-column
-rtable=stress-test-multi-row
+ctable=stress-test-multicolumn
+rtable=stress-test-multirow
 
-region=ap-northeast-1
+region=us-east-1
 
 function test_function() {
     echo "test table $1 ..."
@@ -52,9 +52,9 @@ aws dynamodb create-table \
 
 aws dynamodb wait table-exists --table-name ${ctable} --region ${region}
 
-test_function ${ctable}
-
 aws dynamodb wait table-exists --table-name ${rtable} --region ${region}
+
+test_function ${ctable}
 
 test_function ${rtable} -sortkey
 
