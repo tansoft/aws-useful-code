@@ -20,7 +20,8 @@ import (
 
 var (
         tableName         = flag.String("table", "stress-test", "DynamoDB table name")
-        region            = flag.String("region", "ap-northeast-1", "AWS region")
+        region            = flag.String("region", "us-east-1", "AWS region")
+        configFile        = flag.String("config", "package.yaml", "Configuration file path")
         writeThreads      = flag.Int("putItem", 0, "Number of write threads")
         readThreads       = flag.Int("getItem", 0, "Number of read threads")
         batchWriteThreads = flag.Int("batchWriteItem", 0, "Number of batch write threads")
@@ -31,6 +32,7 @@ var (
         updateThreads     = flag.Int("updateItem", 0, "Number of update threads")
         deleteThreads     = flag.Int("deleteItem", 0, "Number of delete threads")
         duration          = flag.Int("t", 3600, "Test duration in seconds")
+        times             = flag.Int("times", 0, "Number of iterations (0 for unlimited)")
         useSortKey        = flag.Bool("sortkey", false, "Use sort key in table schema")
         printKey          = flag.Bool("printkey", false, "Print the generated key")
 )
@@ -124,7 +126,7 @@ func main() {
         flag.Parse()
 
         var err error
-        values, packageNames, err = loadPackages("package.yaml")
+        values, packageNames, err = loadPackages(*configFile)
         if err != nil {
                 log.Fatal(err)
         }
@@ -227,7 +229,11 @@ func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                 }
         }
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -258,6 +264,7 @@ func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                                 // fmt.Printf("PutItem error: %+v\n", err)
                                 atomic.AddInt64(&stats.writeErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -265,7 +272,11 @@ func writeWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
 func readWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -295,6 +306,7 @@ func readWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.readErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -306,7 +318,11 @@ func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.
                 batchCount = writeKeyGen.packageLength()
         }
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -353,6 +369,7 @@ func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.batchWriteErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -361,7 +378,11 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
         defer wg.Done()
         batchCount := 100
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -397,6 +418,7 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.batchReadErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -408,7 +430,11 @@ func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb
                 batchCount = writeKeyGen.packageLength()
         }
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -451,6 +477,7 @@ func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.batchDeleteErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -458,7 +485,11 @@ func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb
 func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -479,6 +510,7 @@ func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.queryErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -486,7 +518,11 @@ func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
 func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -500,6 +536,7 @@ func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.scanErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -507,7 +544,11 @@ func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
 func updateWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -539,6 +580,7 @@ func updateWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clie
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.updateErrors, 1)
                         }
+                        iter++
                 }
         }
 }
@@ -546,7 +588,11 @@ func updateWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clie
 func deleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        iter := 0
         for {
+                if *times > 0 && iter >= *times {
+                        return
+                }
                 select {
                 case <-ctx.Done():
                         return
@@ -576,6 +622,7 @@ func deleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clie
                         } else if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
                                 atomic.AddInt64(&stats.deleteErrors, 1)
                         }
+                        iter++
                 }
         }
 }

@@ -2,8 +2,9 @@
 
 arch="arm64"
 instance_type="c7gn.4xlarge"
-instance_count=1
-deploy_region="ap-northeast-1"
+instance_count=${1:-1}
+shift
+deploy_region="us-east-1"
 # 请提前创建好这个role允许ddb的访问
 instance_profile="ec2-admin"
 

@@ -6,17 +6,21 @@
 go mod tidy
 go run stress-test.go
 
-Usage of stress-test:
+Usage of ./stress-test:
   -batchDeleteItem int
         Number of batch delete threads
   -batchGetItem int
         Number of batch read threads
   -batchWriteItem int
         Number of batch write threads
+  -config string
+        Configuration file path (default "package.yaml")
   -deleteItem int
         Number of delete threads
   -getItem int
         Number of read threads
+  -printkey
+        Print the generated key
   -putItem int
         Number of write threads
   -query int
@@ -31,6 +35,8 @@ Usage of stress-test:
         Test duration in seconds (default 3600)
   -table string
         DynamoDB table name (default "stress-test")
+  -times int
+        Number of iterations (0 for unlimited)
   -updateItem int
         Number of update threads
 ```
@@ -41,10 +47,10 @@ Usage of stress-test:
 go run stress-test.go -getItem 100
 ```
 
-### 批量拉机器测试，脚本会通过ec2的user-data进行程序安装，并使用命令行参数进行测试
+### 批量起10台机器测试，脚本会通过ec2的user-data进行程序安装，并使用命令行参数进行测试
 
 ```bash
-./start-stress.sh -getItem 100 -t 1800
+./start-stress.sh 10 -getItem 100 -t 1800
 ```
 
 ## 表格设计
@@ -74,19 +80,31 @@ values := map[string][]byte{
 参照 [DDB-PATTERN.md](DDB-PATTERN.md) 说明，DynamoDB在频繁单列更新时，建议使用多行的方式进行表设计。因此在多行模式下，建表时应使用带有SortKey的方式进行建表。
 
 为了进行高效测试，多行模式时，表格结构规定如下：
-分区键：id
-排序键：sk
-取值：val
-在putItem/getItem时，会通过上述固定随机数方式，计算得出每次读写的单列名字。
-在BatchWriteItem/BatchDeleteItem逻辑中，会把key对应的所有package进行写入/删除。
-在query逻辑中，会返回key的所有内容。
+
+* 分区键：id
+* 排序键：sk
+* Item：val
+
+* 在putItem/getItem时，会通过上述固定随机数方式，计算得出每次读写的单列名字，如： id=4d65822107fcfd5278629a0f5f3f164f sk=data2。
+* 在BatchWriteItem/BatchDeleteItem逻辑中，标准模式（多列）会写入25条整条的数据，带SortKey（多行）模式会把单个package里的每列数据分别进行插入/删除，如会同时写入：
+
+```bash
+id=4d65822107fcfd5278629a0f5f3f164f sk=data1
+id=4d65822107fcfd5278629a0f5f3f164f sk=data2
+id=4d65822107fcfd5278629a0f5f3f164f sk=data3
+id=4d65822107fcfd5278629a0f5f3f164f sk=data4
+id=4d65822107fcfd5278629a0f5f3f164f sk=data5
+id=4d65822107fcfd5278629a0f5f3f164f sk=data6
+```
+
+* 在query逻辑中，带SortKey（多行）模式会返回key的所有内容，如：query(id=4d65822107fcfd5278629a0f5f3f164f)，会返回data1～data6所有内容。标准模式（多列）下，query和getItem等价。
 
 ### 功能逻辑测试
 
 #### 测试原理：进行DynamoDB的基本功能和性能测试，测试步骤包括：
 
 * 程序会先创建 stress-test-multicolumn 和 stress-test-multirow 两个表，按需模式，分别做 标准模式（多列）和 带SortKey（多行）模式的测试。
-* 写入操作统一进行10分钟，读取操作统一进行5分钟，压测程序使用单线程进行请求，机型是m7i.large。
+* 写入操作统一进行10分钟，读取操作统一进行5分钟，压测程序使用单线程进行请求，压测机型是m7i.large。
 * 步骤一：批量写入操作，创建条目。
 * 步骤二：批量读取操作，获取条目数据。
 * 步骤三：单条读取操作（全量读取），获取条目数据。
@@ -149,12 +167,39 @@ values := map[string][]byte{
 
 #### 测试结论：
 
-* 所有操作延迟都在10ms以下。
-* 单条获取数据，无论数据是多列/多行，单列/单行，还是Miss情况下，延时都是一致的。
+* 所有带分区读写操作延迟都在5ms以下，Scan操作较重，应避免生产使用。
+* 单条获取数据，无论数据是多列/多行，单列/单行，还是Miss情况下，延时都基本一致。
 * 批量获取数据，性能会更高，如单次获取100条数据，平均延时只有0.14ms，是单条获取的16倍。
-* Query在多行模式下，因为要聚合多条数据，延迟会有上升，如单条获取是1.57ms，query会到2.62ms。
+* Query在多行模式下，因为要聚合多条数据，延迟会有上升，如单id只有多条数据的情况下，单条获取是1.57ms，query会到2.62ms。
 
-### 建表语句参考
+### 占用空间测试
+
+#### 测试原理：相同数据，使用 标准模式（多列）和 带SortKey（多行）进行存储的对比
+
+```bash
+./space-test.sh
+```
+
+#### 测试结果
+
+标准模式（多列）表 space-test-multicolumn：
+带SortKey（多行）表 space-test-multirow：
+
+### 压力测试
+
+可以使用 ./create-ddb-dashboard.sh 创建监控ddb和压测机的cloudwatch dashboard
+
+测试数据量1TB，100K 预置 WCU/RCU 的性能 
+
+测试数据量10TB，100K 预置 WCU/RCU 的性能 
+
+测试数据量10TB，1M 预置 WCU/RCU 的性能 
+
+写测试：验证整行更新场景
+
+读测试：验证单条查询，多条查询（5个查询，20个查询）性能是否一致
+
+### 标准模式（多列）建表语句参考
 
 ```bash
 #### 基础版本（按需计费）
@@ -163,6 +208,25 @@ aws dynamodb create-table \
   --table-name stress-test \
   --attribute-definitions AttributeName=id,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
+  --tags Key=Cost-Center,Value=stress-test \
+  --billing-mode PAY_PER_REQUEST
+
+#### 预置模式请参考
+  --billing-mode PROVISIONED \
+  --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1500
+```
+
+### 带SortKey（多行）建表语句参考
+
+```bash
+#### 基础版本（按需计费）
+bash
+aws dynamodb create-table \
+  --table-name stress-test \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+      AttributeName=sk,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+      AttributeName=sk,KeyType=RANGE \
   --tags Key=Cost-Center,Value=stress-test \
   --billing-mode PAY_PER_REQUEST
 
@@ -207,23 +271,4 @@ aws application-autoscaling put-scaling-policy \
   --policy-type TargetTrackingScaling \
   --target-tracking-scaling-policy-configuration \
     '{"TargetValue":70.0,"PredefinedMetricSpecification":{"PredefinedMetricType":"DynamoDBWriteCapacityUtilization"}}'
-```
-
-### 建表语句参考
-
-```bash
-#### 基础版本（按需计费）
-bash
-aws dynamodb create-table \
-  --table-name stress-test \
-  --attribute-definitions AttributeName=id,AttributeType=S \
-      AttributeName=sk,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-      AttributeName=sk,KeyType=RANGE \
-  --tags Key=Cost-Center,Value=stress-test \
-  --billing-mode PAY_PER_REQUEST
-
-#### 预置模式请参考
-  --billing-mode PROVISIONED \
-  --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1500
 ```

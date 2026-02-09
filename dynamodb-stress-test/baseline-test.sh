@@ -3,31 +3,31 @@
 wsec=600
 rsec=300
 
-ctable=stress-test-multicolumn
-rtable=stress-test-multirow
+ctable=baseline-test-multicolumn
+rtable=baseline-test-multirow
 
 region=us-east-1
 
 function test_function() {
     echo "test table $1 ..."
     table=$1
-    addcmd=$2
-    ./stress-test -table ${table} -t ${wsec} -batchWriteItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${rsec} -batchGetItem 1 -region ${region} ${addcmd}
+    shift
+    ./stress-test -table ${table} -t ${wsec} -batchWriteItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${rsec} -batchGetItem 1 -region ${region} "$@"
     # full get
-    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${wsec} -updateItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${wsec} -batchDeleteItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${wsec} -putItem 1 -region ${region} ${addcmd}
+    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${wsec} -updateItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${wsec} -batchDeleteItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${wsec} -putItem 1 -region ${region} "$@"
     # hit part get
-    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${rsec} -scan 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${wsec} -deleteItem 1 -region ${region} ${addcmd}
+    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${rsec} -scan 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${wsec} -deleteItem 1 -region ${region} "$@"
     # miss get
-    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} ${addcmd}
-    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} ${addcmd}
+    ./stress-test -table ${table} -t ${rsec} -getItem 1 -region ${region} "$@"
+    ./stress-test -table ${table} -t ${rsec} -query 1 -region ${region} "$@"
 }
 
 go build -o stress-test stress-test.go
