@@ -327,7 +327,7 @@ func batchWriteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.
                 case <-ctx.Done():
                         return
                 default:
-                        var requests []types.WriteRequest
+                        requests := make([]types.WriteRequest, 0, batchCount)
                         if *useSortKey {
                                 key, _ := writeKeyGen.NextSortKey()
                                 if *printKey {
@@ -387,7 +387,7 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
                 case <-ctx.Done():
                         return
                 default:
-                        var keys []map[string]types.AttributeValue
+                        keys := make([]map[string]types.AttributeValue, 0, batchCount)
                         for i := 0; i < batchCount; i++ {
                                 var key, sk string
                                 keyMap := map[string]types.AttributeValue{}
@@ -439,7 +439,7 @@ func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb
                 case <-ctx.Done():
                         return
                 default:
-                        var requests []types.WriteRequest
+                        requests := make([]types.WriteRequest, 0, batchCount)
                         if *useSortKey {
                                 key, _ := writeKeyGen.NextSortKey()
                                 if *printKey {
@@ -485,6 +485,7 @@ func batchDeleteWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb
 func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        keyCondExpr := "id = :id"
         iter := 0
         for {
                 if *times > 0 && iter >= *times {
@@ -500,7 +501,7 @@ func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                         }
                         _, err := client.Query(ctx, &dynamodb.QueryInput{
                                 TableName: tableName,
-                                KeyConditionExpression: &[]string{"id = :id"}[0],
+                                KeyConditionExpression: &keyCondExpr,
                                 ExpressionAttributeValues: map[string]types.AttributeValue{
                                         ":id": &types.AttributeValueMemberS{Value: key},
                                 },
@@ -518,6 +519,7 @@ func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
 func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client, stats *Stats, id int) {
         defer wg.Done()
 
+        scanLimit := int32(100)
         iter := 0
         for {
                 if *times > 0 && iter >= *times {
@@ -529,7 +531,7 @@ func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
                 default:
                         _, err := client.Scan(ctx, &dynamodb.ScanInput{
                                 TableName: tableName,
-                                Limit: &[]int32{100}[0],
+                                Limit: &scanLimit,
                         })
                         if err == nil {
                                 atomic.AddInt64(&stats.scanCount, 1)
