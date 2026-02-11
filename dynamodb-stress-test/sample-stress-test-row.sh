@@ -37,7 +37,7 @@ aws dynamodb wait table-exists --table-name ${ctable}10 --region ${region}
 
 # 插入1TB数据
 # times = 1000000000 KB / 5KB item-size / 1 batch / 20 threads / 1 ec2
-./start-stress.sh 1 -table ${ctable} -t 86400 -batchWriteItem 20 -region ${region} -config package-size.yaml -times 10000000
+./start-stress.sh 1 -table ${ctable} -t 86400 -batchWriteItem 20 -sortkey -region ${region} -config package-size.yaml -times 10000000
 # times = 10000000000 KB / 5KB item-size / 1 batch / 20 threads / 1 ec2
-./start-stress.sh 1 -table ${ctable}10 -t 86400 -batchWriteItem 20 -region ${region} -config package-size.yaml -times 100000000
+./start-stress.sh 1 -table ${ctable}10 -t 86400 -batchWriteItem 20 -sortkey -region ${region} -config package-size.yaml -times 100000000
 
