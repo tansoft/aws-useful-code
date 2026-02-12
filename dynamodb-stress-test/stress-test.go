@@ -35,6 +35,8 @@ var (
         times             = flag.Int("times", 0, "Number of iterations (0 for unlimited)")
         useSortKey        = flag.Bool("sortkey", false, "Use sort key in table schema")
         printKey          = flag.Bool("printkey", false, "Print the generated key")
+        seed              = flag.Int64("seed", 0, "Random seed (-1 for random, default 0)")
+        readConsistency   = flag.Bool("consistentRead", false, "Use strongly consistent reads")
 )
 
 type Stats struct {
@@ -138,8 +140,19 @@ func main() {
 
         client := dynamodb.NewFromConfig(cfg)
         stats := &Stats{}
-        writeKeyGen = NewKeyGenerator(1, packageNames)
-        readKeyGen = NewKeyGenerator(1, packageNames)
+        
+        writeSeed := int64(1)
+        readSeed := int64(1)
+        if *seed != -1 {
+                writeSeed = *seed
+                readSeed = *seed
+        } else {
+                writeSeed = time.Now().UnixNano()
+                readSeed = time.Now().UnixNano()
+        }
+        
+        writeKeyGen = NewKeyGenerator(writeSeed, packageNames)
+        readKeyGen = NewKeyGenerator(readSeed, packageNames)
 
         ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*duration)*time.Second)
         defer cancel()
@@ -300,6 +313,7 @@ func readWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
                         _, err := client.GetItem(ctx, &dynamodb.GetItemInput{
                                 TableName: tableName,
                                 Key: keyMap,
+                                ConsistentRead: readConsistency,
                         })
                         if err == nil {
                                 atomic.AddInt64(&stats.readCount, 1)
@@ -410,7 +424,7 @@ func batchReadWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.C
 
                         _, err := client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
                                 RequestItems: map[string]types.KeysAndAttributes{
-                                        *tableName: {Keys: keys},
+                                        *tableName: {Keys: keys, ConsistentRead: readConsistency},
                                 },
                         })
                         if err == nil {
@@ -505,6 +519,7 @@ func queryWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Clien
                                 ExpressionAttributeValues: map[string]types.AttributeValue{
                                         ":id": &types.AttributeValueMemberS{Value: key},
                                 },
+                                ConsistentRead: readConsistency,
                         })
                         if err == nil {
                                 atomic.AddInt64(&stats.queryCount, 1)
@@ -532,6 +547,7 @@ func scanWorker(ctx context.Context, wg *sync.WaitGroup, client *dynamodb.Client
                         _, err := client.Scan(ctx, &dynamodb.ScanInput{
                                 TableName: tableName,
                                 Limit: &scanLimit,
+                                ConsistentRead: readConsistency,
                         })
                         if err == nil {
                                 atomic.AddInt64(&stats.scanCount, 1)

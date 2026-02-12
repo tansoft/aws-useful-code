@@ -182,49 +182,26 @@ id=4d65822107fcfd5278629a0f5f3f164f sk=data6
 
 #### 测试结果
 
-# 多列模式，写入是一批25，写400次，等于1万条记录
-# test_function ${ctable} -times 40000
+* 多列模式，写入是一批25，写400次，等于1万条记录，使用命令：-times 40000
 
-# 多行模式，写入1次是5份记录，写10000次，等于5万条记录
-test_function ${rtable} -sortkey -times 1000000
+* 多行模式，写入1次是5份记录，写10000次，等于5万条记录，使用命令：-sortkey -times 1000000
 
-space-usage-multicolumn：
-Item count 728,174
-Table size 3.7 gigabytes
-Average item size 5,059 bytes
+* 多轮测试信息如下：
 
-space-usage-multirow：
-Item count 5,000,000
-Table size 5.2 gigabytes
-Average item size 1,044 bytes
-
-后面压力测试因为要做比较多的数据，也进行了写入测试
-
-stress-test-multicolumn：
-Item count 190,535,308
-Table size 963.9 gigabytes
-Average item size 5,059 bytes
-
-stress-test-multicolumn10：
-Item count 680,699,567
-Table size 3.4 terabytes
-Average item size 5,059 bytes
-
-stress-test-multirow：
-Item count 658,143,766
-Table size 687.1 gigabytes
-Average item size 1,044 bytes
-
-stress-test-multirow10：
-Item count 638,263,907
-Table size 666.3 gigabytes
-Average item size 1,044 bytes
-
-标准模式（多列）表 space-test-multicolumn：
-
-带SortKey（多行）表 space-test-multirow：
-
-
+| 标准模式（多列） |  |  |
+|-----|-----|-----|
+| Item数量 | 空间大小 | 平均Item大小 |
+| 728,174 | 3.7 gigabytes | 5,059 bytes |
+| 190,535,308 | 963.9 gigabytes | 5,059 bytes |
+| 680,699,567 | 3.4 terabytes | 5,059 bytes |
+| 786,804,601 | 4 terabytes | 5,059 bytes |
+|-----|-----|-----|
+| 带SortKey（多行）表 |  |  |
+|-----|-----|-----|
+| 5,000,000 | 5.2 gigabytes | 1,044 bytes |
+| 658,143,766 | 687.1 gigabytes | 1,044 bytes |
+| 855,965,739 | 893.6 gigabytes | 1,044 bytes |
+| 5,000,000 | 5.2 gigabytes | 1,044 bytes |
 
 ### 压力测试
 
