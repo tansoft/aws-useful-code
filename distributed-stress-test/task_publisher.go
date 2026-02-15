@@ -290,7 +290,6 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 
 type taskBatch struct {
 	tasks []taskItem
-	count int
 }
 
 type taskItem struct {
@@ -335,24 +334,24 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}
 	}
 
-	dataChan := make(chan *taskBatch, 10)
+	dataChan := make(chan *taskBatch, 1000)
 	var wg sync.WaitGroup
 
-	// Redis发送线程
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for batch := range dataChan {
-			pipe := rdb.Pipeline()
-			for _, item := range batch.tasks {
-				pipe.RPush(ctx, item.queueKey, item.data)
+	// 多个Redis发送线程（并发发送）
+	numSenders := 20
+	for i := 0; i < numSenders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for batch := range dataChan {
+				pipe := rdb.Pipeline()
+				for _, item := range batch.tasks {
+					pipe.RPush(ctx, item.queueKey, item.data)
+				}
+				_, _ = pipe.Exec(ctx)
 			}
-			_, _ = pipe.Exec(ctx)
-			if stats != nil {
-				stats.Update(task.Action, batch.count, totalTasks, currentQPS)
-			}
-		}
-	}()
+		}()
+	}
 
 	// 数据生成线程
 	startTime := time.Now()
@@ -394,7 +393,9 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 			})
 			taskCount++
 		}
-		batch.count = taskCount
+		if stats != nil {
+			stats.Update(task.Action, taskCount, totalTasks, currentQPS)
+		}
 		dataChan <- batch
 
 		nextTime = nextTime.Add(time.Millisecond * 10)
