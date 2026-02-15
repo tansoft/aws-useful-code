@@ -104,6 +104,45 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 
 ## 快速开始
 
+### 编译
+
 ```bash
 go mod tidy
+go build -o task_publisher task_publisher.go
+go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go
 ```
+
+### 测试命令
+
+**启动 Publisher（带统计监控）：**
+```bash
+./task_publisher -redis localhost:6379 -prefix dst -config config.json -traffic traffic.json -stats
+```
+
+**启动 Worker（DynamoDB）：**
+```bash
+./worker -redis localhost:6379 -prefix dst -db dynamodb
+```
+
+**启动 Worker（Redis/ElastiCache）：**
+```bash
+./worker -redis localhost:6379 -prefix dst -db redis
+```
+
+**参数说明：**
+- `-redis`: Redis 地址（用于任务队列和配置管理）
+- `-prefix`: Redis key 前缀，默认 dst
+- `-config`: 配置文件路径
+- `-traffic`: 流量定义文件路径
+- `-stats`: 启用统计监控（Publisher）
+- `-db`: 数据库类型，dynamodb 或 redis（Worker）
+
+**统计输出示例：**
+```
+[STATS] updateItem | Pub:12345 Rem:87655 QPS:5000 Q:234[45 52 48 43 46] T:2s
+```
+- Pub: 已发布任务数
+- Rem: 剩余任务数
+- QPS: 当前 QPS
+- Q: 总队列堆积[各线程队列长度]
+- T: 运行时间

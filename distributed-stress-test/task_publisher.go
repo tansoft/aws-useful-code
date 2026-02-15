@@ -182,7 +182,58 @@ func smoothQPSs(qpss []float64) []float64 {
 	return result
 }
 
-func publishTask(ctx context.Context, rdb *redis.Client, prefix string, threads int, task Task) {
+type Stats struct {
+	mu          sync.Mutex
+	currentTask string
+	taskCount   int
+	totalTasks  int
+	qps         int
+	startTime   time.Time
+}
+
+func (s *Stats) Update(task string, count, total, qps int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentTask = task
+	s.taskCount = count
+	s.totalTasks = total
+	s.qps = qps
+}
+
+func (s *Stats) Get() (string, int, int, int, time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentTask, s.taskCount, s.totalTasks, s.qps, time.Since(s.startTime)
+}
+
+func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *Stats) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			task, count, total, qps, elapsed := stats.Get()
+			
+			queueLengths := make([]int64, threads)
+			var totalQueued int64
+			for i := 0; i < threads; i++ {
+				queueKey := fmt.Sprintf("%s_q%d", prefix, i)
+				length, _ := rdb.LLen(ctx, queueKey).Result()
+				queueLengths[i] = length
+				totalQueued += length
+			}
+			
+			remaining := total - count
+			log.Printf("[STATS] %s | Pub:%d Rem:%d QPS:%d Q:%d%v T:%s",
+				task, count, remaining, qps, totalQueued, queueLengths, elapsed.Round(time.Second))
+		}
+	}
+}
+
+func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
 	totalTasks := task.Times
 	if task.Duration > 0 {
 		totalTasks = task.QPS * task.Duration
@@ -210,6 +261,10 @@ func publishTask(ctx context.Context, rdb *redis.Client, prefix string, threads 
 			elapsed := time.Since(startTime)
 			hour := int(elapsed.Hours()) % 24
 			currentQPS = int(float64(task.QPS) * qpss[hour])
+		}
+
+		if stats != nil {
+			stats.Update(task.Action, taskCount, totalTasks, currentQPS)
 		}
 
 		if currentQPS == 0 {
@@ -256,7 +311,7 @@ func publishTask(ctx context.Context, rdb *redis.Client, prefix string, threads 
 	}
 }
 
-func processTraffic(ctx context.Context, rdb *redis.Client, prefix string, threads int, traffic interface{}) {
+func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats) {
 	switch v := traffic.(type) {
 	case []interface{}:
 		for _, item := range v {
@@ -270,7 +325,7 @@ func processTraffic(ctx context.Context, rdb *redis.Client, prefix string, threa
 						var task Task
 						json.Unmarshal(taskJSON, &task)
 						log.Printf("Publishing parallel task: action=%s, qps=%d\n", task.Action, task.QPS)
-						publishTask(ctx, rdb, prefix, threads, task)
+						publishTask(ctx, rdb, prefix, threads, task, stats)
 					}(subItem)
 				}
 				wg.Wait()
@@ -279,7 +334,7 @@ func processTraffic(ctx context.Context, rdb *redis.Client, prefix string, threa
 				var task Task
 				json.Unmarshal(taskJSON, &task)
 				log.Printf("Publishing list task: action=%s, qps=%d\n", task.Action, task.QPS)
-				publishTask(ctx, rdb, prefix, threads, task)
+				publishTask(ctx, rdb, prefix, threads, task, stats)
 			}
 		}
 	case map[string]interface{}:
@@ -287,7 +342,7 @@ func processTraffic(ctx context.Context, rdb *redis.Client, prefix string, threa
 		var task Task
 		json.Unmarshal(taskJSON, &task)
 		log.Printf("Publishing task: action=%s, qps=%d\n", task.Action, task.QPS)
-		publishTask(ctx, rdb, prefix, threads, task)
+		publishTask(ctx, rdb, prefix, threads, task, stats)
 	}
 }
 
@@ -296,10 +351,11 @@ func main() {
 	prefix := flag.String("prefix", "dst", "Redis key prefix")
 	configFile := flag.String("config", "config.json", "Config file path")
 	trafficFile := flag.String("traffic", "traffic.json", "Traffic file path")
+	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
 	flag.Parse()
 
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: *redisAddr})
+	rdb := redis.NewUniversalClient(&redis.UniversalOptions{Addrs: []string{*redisAddr}})
 
 	// Load config
 	configData, err := os.ReadFile(*configFile)
@@ -326,7 +382,13 @@ func main() {
 	var traffic interface{}
 	json.Unmarshal(trafficData, &traffic)
 
-	processTraffic(ctx, rdb, *prefix, config.Threads, traffic)
+	var stats *Stats
+	if *enableStats {
+		stats = &Stats{startTime: time.Now()}
+		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
+	}
+
+	processTraffic(ctx, rdb, *prefix, config.Threads, traffic, stats)
 
 	log.Println("All tasks published")
 }
