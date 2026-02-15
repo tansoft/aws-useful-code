@@ -1,0 +1,5 @@
+{
+  "table_name": "stress-test",
+  "region": "us-east-1",
+  "threads": 10
+}

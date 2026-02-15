@@ -1,0 +1,71 @@
+[
+  {
+    "action": "updateItem",
+    "seed": 0,
+    "qps": 5000000,
+    "times": 687188083,
+    "data":{
+      "request_": {"r":16, "len":8000}
+    }
+  },
+  {
+    "action": "updateItem",
+    "seed": 1,
+    "qps": 5000000,
+    "times": 2170660028,
+    "data":{
+      "request_": {"r":16, "len":8000},
+      "bid_feedback_": {"r":16, "len":10000}
+    }
+  },
+  {
+    "action": "updateItem",
+    "seed": 2,
+    "qps": 5000000,
+    "times": 328993975,
+    "data":{
+      "request_": {"r":16, "len":8000},
+      "bid_feedback_": {"r":16, "len":10000},
+      "impression_": {"r":8, "len":2000}
+    }
+  },
+  {
+    "action": "updateItem",
+    "seed": 3,
+    "qps": 5000000,
+    "times": 1008786728,
+    "data":{
+      "request_": {"r":16, "len":8000},
+      "bid_feedback_": {"r":16, "len":10000},
+      "impression_": {"r":8, "len":2000},
+      "click_": {"r":4, "len":2000}
+    }
+  },
+  {
+    "action": "updateItem",
+    "seed": 4,
+    "qps": 5000000,
+    "times": 215165366,
+    "data":{
+      "request_": {"r":16, "len":8000},
+      "bid_feedback_": {"r":16, "len":10000},
+      "impression_": {"r":8, "len":2000},
+      "click_": {"r":4, "len":2000},
+      "install_": {"r":2, "len":2000}
+    }
+  },
+  {
+    "action": "updateItem",
+    "seed": 5,
+    "qps": 5000000,
+    "times": 57463421,
+    "data":{
+      "request_": {"r":16, "len":8000},
+      "bid_feedback_": {"r":16, "len":10000},
+      "impression_": {"r":8, "len":2000},
+      "click_": {"r":4, "len":2000},
+      "install_": {"r":2, "len":2000},
+      "event_": {"r": 8,"len": 29000}
+    }
+  }
+]
