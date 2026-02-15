@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"strings"
 	"strconv"
 	"runtime/pprof"
 
@@ -32,6 +34,7 @@ type Task struct {
 	QPS      int                    `json:"qps,omitempty"`
 	QPSs     []float64              `json:"qpss,omitempty"`
 	Times    int                    `json:"times,omitempty"`
+	Samples  int                    `json:"samples,omitempty"`
 	Duration int                    `json:"duration,omitempty"`
 	Data     map[string]interface{} `json:"data,omitempty"`
 }
@@ -255,6 +258,36 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 	}
 }
 
+const placeholderID = "ABCDEF0123456789ABCDEF0123456789"
+
+func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
+	processedData := make(map[string]interface{})
+	for k, v := range task.Data {
+		if obj, ok := v.(map[string]interface{}); ok {
+			r := int(obj["r"].(float64))
+			//hashVal := keyGen.NextIntn(r)
+			//newKey := fmt.Sprintf("%s%d", k, hashVal)
+			newKey := keyGen.NextKeyIntn(k, r)
+			processedData[newKey] = obj["len"]
+		} else {
+			processedData[k] = v
+		}
+	}
+	var key string
+	if init {
+		key = placeholderID
+	} else {
+		key = keyGen.NextKey()
+	}
+	taskData := map[string]interface{}{
+		"action": task.Action,
+		"key":    key,
+		"data":   processedData,
+	}
+	taskJSON, _ := sonic.Marshal(taskData)
+	return taskJSON
+}
+
 func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
 	totalTasks := task.Times
 	if task.Duration > 0 {
@@ -279,11 +312,23 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
         queueKeys[i] = fmt.Sprintf("%s_q%d", prefix, i)
     }
 
+	keyGen := NewKeyGenerator(int64(task.Seed), task.Seeds)
+
+	var samples []string = nil
+	var samples_keypos []int = nil
+	if task.Samples != 0 {
+		samples = make([]string, task.Samples)
+		samples_keypos = make([]int, task.Samples)
+		for i := 0; i < task.Samples; i++ {
+			samples[i] = string(generateValue(task, keyGen, true))
+			samples_keypos[i] = strings.Index(samples[i], placeholderID) 
+		}
+	}
+
 	startTime := time.Now()
 	nextTime := startTime
 	taskCount := 0
-
-	keyGen := NewKeyGenerator(int64(task.Seed), task.Seeds)
+	var taskJSON []byte
 
 	for taskCount < totalTasks {
 		if len(qpss) > 0 {
@@ -302,25 +347,14 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}
 		pipe := rdb.Pipeline()
 		for i := 0; i < batchSize && taskCount < totalTasks; i++ {
-			processedData := make(map[string]interface{})
-			for k, v := range task.Data {
-				if obj, ok := v.(map[string]interface{}); ok {
-					r := int(obj["r"].(float64))
-					//hashVal := keyGen.NextIntn(r)
-					//newKey := fmt.Sprintf("%s%d", k, hashVal)
-					newKey := keyGen.NextKeyIntn(k, r)
-					processedData[newKey] = obj["len"]
-				} else {
-					processedData[k] = v
-				}
+			if samples != nil {
+				hashVal := keyGen.NextIntn(len(samples))
+				b := []byte(samples[hashVal])
+				copy(b[samples_keypos[hashVal]:], keyGen.NextKey())
+				taskJSON = b
+			} else {
+				taskJSON = generateValue(task, keyGen, false)
 			}
-		
-			taskData := map[string]interface{}{
-				"action": task.Action,
-				"key":    keyGen.NextKey(),
-				"data":   processedData,
-			}
-			taskJSON, _ := sonic.Marshal(taskData)
 			pipe.RPush(ctx, queueKeys[taskCount%threads], taskJSON)
 			taskCount++
 			if stats != nil && taskCount % 100 == 0 {
@@ -384,10 +418,15 @@ func main() {
 	configFile := flag.String("config", "config.json", "Config file path")
 	trafficFile := flag.String("traffic", "traffic.json", "Traffic file path")
 	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
+	enableTLS := flag.Bool("tls", false, "Enable TLS connection to Redis")
 	flag.Parse()
 
 	ctx := context.Background()
-	rdb := redis.NewUniversalClient(&redis.UniversalOptions{Addrs: []string{*redisAddr}})
+	opts := &redis.UniversalOptions{Addrs: []string{*redisAddr}}
+	if *enableTLS {
+		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	rdb := redis.NewUniversalClient(opts)
 
 	// Load config
 	configData, err := os.ReadFile(*configFile)

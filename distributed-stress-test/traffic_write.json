@@ -4,6 +4,7 @@
     "seed": 0,
     "qps": 5000000,
     "times": 687188083,
+    "samples": 16,
     "data":{
       "request_": {"r":16, "len":8000}
     }
@@ -13,6 +14,7 @@
     "seed": 1,
     "qps": 5000000,
     "times": 2170660028,
+    "samples": 16,
     "data":{
       "request_": {"r":16, "len":8000},
       "bid_feedback_": {"r":16, "len":10000}
@@ -23,6 +25,7 @@
     "seed": 2,
     "qps": 5000000,
     "times": 328993975,
+    "samples": 32,
     "data":{
       "request_": {"r":16, "len":8000},
       "bid_feedback_": {"r":16, "len":10000},
@@ -34,6 +37,7 @@
     "seed": 3,
     "qps": 5000000,
     "times": 1008786728,
+    "samples": 32,
     "data":{
       "request_": {"r":16, "len":8000},
       "bid_feedback_": {"r":16, "len":10000},
@@ -46,6 +50,7 @@
     "seed": 4,
     "qps": 5000000,
     "times": 215165366,
+    "samples": 32,
     "data":{
       "request_": {"r":16, "len":8000},
       "bid_feedback_": {"r":16, "len":10000},
@@ -59,6 +64,7 @@
     "seed": 5,
     "qps": 5000000,
     "times": 57463421,
+    "samples": 32,
     "data":{
       "request_": {"r":16, "len":8000},
       "bid_feedback_": {"r":16, "len":10000},
