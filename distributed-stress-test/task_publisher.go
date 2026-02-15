@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"encoding/hex"
 	"os"
 	"sync"
 	"time"
+	"strconv"
+	"runtime/pprof"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/bytedance/sonic"
 )
 
 type Config struct {
@@ -133,15 +137,30 @@ func NewKeyGenerator(seed int64, seeds []float64) *KeyGenerator {
 func (kg *KeyGenerator) NextKey() string {
 	// kg.mu.Lock()
 	// defer kg.mu.Unlock()
+	b := make([]byte, 16)
 	if kg.alias != nil {
 		idx := kg.alias.Random()
-		return fmt.Sprintf("%016x%016x", kg.seeds[idx].Uint64(), kg.seeds[idx].Uint64())
+		kg.seeds[idx].Read(b)
+	} else {
+	    kg.rkey.Read(b)
 	}
-	return fmt.Sprintf("%016x%016x", kg.rkey.Uint64(), kg.rkey.Uint64())
+    return hex.EncodeToString(b)
+	//使用 Read(b) 500万次 346.519896ms，使用fmt 500万次 886.121717ms
+	// return fmt.Sprintf("%016x%016x", kg.rkey.Uint64(), kg.rkey.Uint64())
 }
 
 func (kg *KeyGenerator) NextIntn(num int) int {
 	return kg.rn.Intn(num)
+}
+
+// 运行 500万次 219.649664ms
+func (kg *KeyGenerator) NextKeyIntn(k string, num int) string {
+    hashVal := kg.rn.Intn(num)
+    // 预估容量避免扩容
+    result := make([]byte, 0, len(k)+10)
+    result = append(result, k...)
+    result = strconv.AppendInt(result, int64(hashVal), 10)
+    return string(result)
 }
 
 func smoothQPSs(qpss []float64) []float64 {
@@ -186,6 +205,7 @@ type Stats struct {
 	mu          sync.Mutex
 	currentTask string
 	taskCount   int
+	lastTaskCount int
 	totalTasks  int
 	qps         int
 	startTime   time.Time
@@ -200,10 +220,12 @@ func (s *Stats) Update(task string, count, total, qps int) {
 	s.qps = qps
 }
 
-func (s *Stats) Get() (string, int, int, int, time.Duration) {
+func (s *Stats) Get() (string, int, int, int, int, time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.currentTask, s.taskCount, s.totalTasks, s.qps, time.Since(s.startTime)
+	lastTaskCount := s.lastTaskCount
+	s.lastTaskCount = s.taskCount
+	return s.currentTask, s.taskCount, lastTaskCount, s.totalTasks, s.qps, time.Since(s.startTime)
 }
 
 func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *Stats) {
@@ -215,7 +237,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			task, count, total, qps, elapsed := stats.Get()
+			task, count, last, total, qps, elapsed := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
@@ -227,8 +249,8 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			}
 			
 			remaining := total - count
-			log.Printf("[STATS] %s | Pub:%d Rem:%d QPS:%d Q:%d%v T:%s",
-				task, count, remaining, qps, totalQueued, queueLengths, elapsed.Round(time.Second))
+			log.Printf("[STATS] %s | Pub:%d Rem:%d QPS:%d/%d Q:%d%v T:%s",
+				task, count, remaining, count-last, qps, totalQueued, queueLengths, elapsed.Round(time.Second))
 		}
 	}
 }
@@ -236,6 +258,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
 	totalTasks := task.Times
 	if task.Duration > 0 {
+		//fixme，这里如果是流量曲线图会不准，改为判断时间会好一点
 		totalTasks = task.QPS * task.Duration
 	}
 	if task.Times > 0 && task.Duration > 0 {
@@ -244,10 +267,17 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}
 	}
 
+	currentQPS := task.QPS
 	qpss := task.QPSs
 	if len(qpss) > 0 {
 		qpss = smoothQPSs(qpss)
+		fmt.Println(qpss)
 	}
+
+    queueKeys := make([]string, threads)
+    for i := 0; i < threads; i++ {
+        queueKeys[i] = fmt.Sprintf("%s_q%d", prefix, i)
+    }
 
 	startTime := time.Now()
 	nextTime := startTime
@@ -256,57 +286,59 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	keyGen := NewKeyGenerator(int64(task.Seed), task.Seeds)
 
 	for taskCount < totalTasks {
-		currentQPS := task.QPS
 		if len(qpss) > 0 {
 			elapsed := time.Since(startTime)
-			hour := int(elapsed.Hours()) % 24
-			currentQPS = int(float64(task.QPS) * qpss[hour])
+			if elapsed > time.Minute {
+				startTime = time.Now()
+				hour := int(elapsed.Hours()) % 24
+				currentQPS = int(float64(task.QPS) * qpss[hour])
+				fmt.Println("Change QPS:", currentQPS)
+			}
 		}
 
-		if stats != nil {
-			stats.Update(task.Action, taskCount, totalTasks, currentQPS)
-		}
-
-		if currentQPS == 0 {
-			time.Sleep(time.Second)
-			continue
-		}
-
-		batchSize := currentQPS / 100
+		batchSize := currentQPS / 10
 		if batchSize == 0 {
 			batchSize = 1
 		}
-
+		pipe := rdb.Pipeline()
 		for i := 0; i < batchSize && taskCount < totalTasks; i++ {
 			processedData := make(map[string]interface{})
 			for k, v := range task.Data {
 				if obj, ok := v.(map[string]interface{}); ok {
 					r := int(obj["r"].(float64))
-					hashVal := keyGen.NextIntn(r)
-					newKey := fmt.Sprintf("%s%d", k, hashVal)
+					//hashVal := keyGen.NextIntn(r)
+					//newKey := fmt.Sprintf("%s%d", k, hashVal)
+					newKey := keyGen.NextKeyIntn(k, r)
 					processedData[newKey] = obj["len"]
 				} else {
 					processedData[k] = v
 				}
 			}
-			
-			queueKey := fmt.Sprintf("%s_q%d", prefix, taskCount%threads)
+		
 			taskData := map[string]interface{}{
 				"action": task.Action,
 				"key":    keyGen.NextKey(),
 				"data":   processedData,
 			}
-			taskJSON, _ := json.Marshal(taskData)
-			rdb.RPush(ctx, queueKey, taskJSON)
+			taskJSON, _ := sonic.Marshal(taskData)
+			pipe.RPush(ctx, queueKeys[taskCount%threads], taskJSON)
 			taskCount++
+			if stats != nil && taskCount % 100 == 0 {
+				stats.Update(task.Action, taskCount, totalTasks, currentQPS)
+			}
 		}
-
+		_, _ = pipe.Exec(ctx)
 		nextTime = nextTime.Add(time.Millisecond * 10)
 		sleepDuration := time.Until(nextTime)
 		if sleepDuration > 0 {
+			if stats != nil {
+				stats.Update(task.Action, taskCount, totalTasks, currentQPS)
+			}
+			fmt.Println("sleep", sleepDuration, taskCount)
 			time.Sleep(sleepDuration)
 		} else {
-			nextTime = time.Now()
+			//性能赶不上，不sleep了
+			// nextTime = time.Now()
 		}
 	}
 }
@@ -388,7 +420,32 @@ func main() {
 		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
 	}
 
+	f, _ := os.Create("cpu.prof")
+    defer f.Close()
+    // 开始 CPU 分析
+    pprof.StartCPUProfile(f)
+    defer pprof.StopCPUProfile()
+
+	// performanceTest()
+
 	processTraffic(ctx, rdb, *prefix, config.Threads, traffic, stats)
 
 	log.Println("All tasks published")
+}
+
+func timeTrack(start time.Time, name string) {
+    elapsed := time.Since(start)
+    fmt.Printf("%s took %s\n", name, elapsed)
+}
+
+//go tool pprof cpu.prof
+// (pprof) top10
+// (pprof) list publishTask
+func performanceTest() {
+	defer timeTrack(time.Now(), "expensiveFunc")
+
+	keyGen := NewKeyGenerator(int64(1), nil)
+	for i:=0;i<5000000;i++ {
+		_ = keyGen.NextKeyIntn("keyd", 16)
+	}
 }
