@@ -288,6 +288,16 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 	return taskJSON
 }
 
+type taskBatch struct {
+	tasks []taskItem
+	count int
+}
+
+type taskItem struct {
+	queueKey string
+	data     []byte
+}
+
 func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
 	totalTasks := task.Times
 	if task.Duration > 0 {
@@ -307,10 +317,10 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		fmt.Println(qpss)
 	}
 
-    queueKeys := make([]string, threads)
-    for i := 0; i < threads; i++ {
-        queueKeys[i] = fmt.Sprintf("%s_q%d", prefix, i)
-    }
+	queueKeys := make([]string, threads)
+	for i := 0; i < threads; i++ {
+		queueKeys[i] = fmt.Sprintf("%s_q%d", prefix, i)
+	}
 
 	keyGen := NewKeyGenerator(int64(task.Seed), task.Seeds)
 
@@ -321,14 +331,33 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		samples_keypos = make([]int, task.Samples)
 		for i := 0; i < task.Samples; i++ {
 			samples[i] = string(generateValue(task, keyGen, true))
-			samples_keypos[i] = strings.Index(samples[i], placeholderID) 
+			samples_keypos[i] = strings.Index(samples[i], placeholderID)
 		}
 	}
 
+	dataChan := make(chan *taskBatch, 10)
+	var wg sync.WaitGroup
+
+	// Redis发送线程
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for batch := range dataChan {
+			pipe := rdb.Pipeline()
+			for _, item := range batch.tasks {
+				pipe.RPush(ctx, item.queueKey, item.data)
+			}
+			_, _ = pipe.Exec(ctx)
+			if stats != nil {
+				stats.Update(task.Action, batch.count, totalTasks, currentQPS)
+			}
+		}
+	}()
+
+	// 数据生成线程
 	startTime := time.Now()
 	nextTime := startTime
 	taskCount := 0
-	var taskJSON []byte
 
 	for taskCount < totalTasks {
 		if len(qpss) > 0 {
@@ -345,36 +374,40 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		if batchSize == 0 {
 			batchSize = 1
 		}
-		pipe := rdb.Pipeline()
+
+		batch := &taskBatch{tasks: make([]taskItem, 0, batchSize)}
 		for i := 0; i < batchSize && taskCount < totalTasks; i++ {
+			var taskJSON []byte
 			if samples != nil {
 				hashVal := keyGen.NextIntn(len(samples))
-				b := []byte(samples[hashVal])
+				// 这里更高效做法是直接转byte b := []byte(samples[hashVal]) 不用make和copy，只copy NextKey就行
+				b := make([]byte, len(samples[hashVal]))
+				copy(b, samples[hashVal])
 				copy(b[samples_keypos[hashVal]:], keyGen.NextKey())
 				taskJSON = b
 			} else {
 				taskJSON = generateValue(task, keyGen, false)
 			}
-			pipe.RPush(ctx, queueKeys[taskCount%threads], taskJSON)
+			batch.tasks = append(batch.tasks, taskItem{
+				queueKey: queueKeys[taskCount%threads],
+				data:     taskJSON,
+			})
 			taskCount++
-			if stats != nil && taskCount % 100 == 0 {
-				stats.Update(task.Action, taskCount, totalTasks, currentQPS)
-			}
 		}
-		_, _ = pipe.Exec(ctx)
+		batch.count = taskCount
+		dataChan <- batch
+
 		nextTime = nextTime.Add(time.Millisecond * 10)
 		sleepDuration := time.Until(nextTime)
+		//如果性能赶不上，就不sleep了
 		if sleepDuration > 0 {
-			if stats != nil {
-				stats.Update(task.Action, taskCount, totalTasks, currentQPS)
-			}
 			fmt.Println("sleep", sleepDuration, taskCount)
 			time.Sleep(sleepDuration)
-		} else {
-			//性能赶不上，不sleep了
-			// nextTime = time.Now()
 		}
 	}
+
+	close(dataChan)
+	wg.Wait()
 }
 
 func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats) {

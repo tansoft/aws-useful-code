@@ -119,6 +119,7 @@ go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go
 **启动 Publisher（带统计监控）：**
 ```bash
 ./task_publisher -redis localhost:6379 -prefix dst -config config.json -traffic traffic.json -stats
+./task_publisher -redis elasticache-server:6379 -tls -prefix dst -config config.json -traffic traffic.json -stats
 ```
 
 **启动 Worker（DynamoDB）：**
