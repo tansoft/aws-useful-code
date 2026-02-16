@@ -10,6 +10,7 @@
 * {prefix}_cfg：存储配置信息，各个worker启动时需要获取配置信息
 * {prefix}_notify：订阅控制端消息，默认支持的消息包括：重新获取配置信息 update_config，执行bash脚本 execute_bash，重启机器 reboot_instance，终止机器 terminate_instance 等，可针对不同场景可自行实现扩充。
 * {prefix}_q{n}：压测任务队列，各worker按顺序进行订阅和消费，获取任务后进行具体操作。
+* {prefix}_stats：worker可以把状态进行上报，控制端订阅该消息，可以获取到worker的工作情况。
 
 ### 配置文件设计
 

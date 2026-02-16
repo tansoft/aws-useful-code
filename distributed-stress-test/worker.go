@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -23,11 +24,38 @@ type Config struct {
 	RedisAddr  string `json:"redis_addr,omitempty"`
 }
 
+type WorkerStats struct {
+	updateCount int64
+	queryCount  int64
+	errorCount  int64
+	startTime   time.Time
+}
+
+func (s *WorkerStats) AddUpdate() {
+	atomic.AddInt64(&s.updateCount, 1)
+}
+
+func (s *WorkerStats) AddQuery() {
+	atomic.AddInt64(&s.queryCount, 1)
+}
+
+func (s *WorkerStats) AddError() {
+	atomic.AddInt64(&s.errorCount, 1)
+}
+
+func (s *WorkerStats) Get() (int64, int64, int64, time.Duration) {
+	return atomic.SwapInt64(&s.updateCount, 0),
+		atomic.SwapInt64(&s.queryCount, 0),
+		atomic.SwapInt64(&s.errorCount, 0),
+		time.Since(s.startTime)
+}
+
 type Worker struct {
 	rdb    redis.UniversalClient
 	prefix string
 	config Config
 	db     Database
+	stats  *WorkerStats
 }
 
 func (w *Worker) processTask(task map[string]interface{}) {
@@ -37,9 +65,21 @@ func (w *Worker) processTask(task map[string]interface{}) {
 
 	switch action {
 	case "updateItem":
-		w.db.UpdateItem(key, data)
+		if err := w.db.UpdateItem(key, data); err != nil {
+			if w.stats != nil {
+				w.stats.AddError()
+			}
+		} else if w.stats != nil {
+			w.stats.AddUpdate()
+		}
 	case "query":
-		w.db.Query(key)
+		if err := w.db.Query(key); err != nil {
+			if w.stats != nil {
+				w.stats.AddError()
+			}
+		} else if w.stats != nil {
+			w.stats.AddQuery()
+		}
 	}
 }
 
@@ -82,11 +122,58 @@ func (w *Worker) handleNotify(ctx context.Context) {
 	}
 }
 
+func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *WorkerStats) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	
+	hostname, _ := exec.Command("hostname").Output()
+	workerID := strings.TrimSpace(string(hostname))
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			updates, queries, errors, elapsed := stats.Get()
+			
+			queueLengths := make([]int64, threads)
+			var totalQueued int64
+			for i := 0; i < threads; i++ {
+				queueKey := fmt.Sprintf("%s_q%d", prefix, i)
+				length, _ := rdb.LLen(ctx, queueKey).Result()
+				queueLengths[i] = length
+				totalQueued += length
+			}
+			
+			total := updates + queries
+			
+			// 上报到 Redis
+			statsData := map[string]interface{}{
+				"worker_id": workerID,
+				"updates":   updates,
+				"queries":   queries,
+				"errors":    errors,
+				"total":     total,
+				"queued":    totalQueued,
+				"queues":    queueLengths,
+				"elapsed":   int64(elapsed.Seconds()),
+				"timestamp": time.Now().Unix(),
+			}
+			statsJSON, _ := json.Marshal(statsData)
+			rdb.Publish(ctx, prefix+"_stats", string(statsJSON))
+			
+			log.Printf("[STATS] Update:%d Query:%d Err:%d Total:%d Q:%d%v T:%s",
+				updates, queries, errors, total, totalQueued, queueLengths, elapsed.Round(time.Second))
+		}
+	}
+}
+
 func main() {
 	redisAddr := flag.String("redis", "localhost:6379", "Redis address")
 	prefix := flag.String("prefix", "dst", "Redis key prefix")
 	dbType := flag.String("db", "dynamodb", "Database type: dynamodb or redis")
 	useTLS := flag.Bool("tls", false, "Use TLS for Redis connection")
+	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -124,7 +211,13 @@ func main() {
 	}
 	defer db.Close()
 
-	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db}
+	var stats *WorkerStats
+	if *enableStats {
+		stats = &WorkerStats{startTime: time.Now()}
+		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
+	}
+
+	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db, stats: stats}
 
 	go worker.handleNotify(ctx)
 

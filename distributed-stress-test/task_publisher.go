@@ -278,6 +278,26 @@ func (s *Stats) Get() (string, int64, int, int, time.Duration, int64, int64, int
 func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *Stats) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	
+	// 订阅 worker 上报的状态
+	pubsub := rdb.Subscribe(ctx, prefix+"_stats")
+	defer pubsub.Close()
+	
+	workerStats := make(map[string]map[string]interface{})
+	var mu sync.Mutex
+
+	// 接收 worker 状态
+	go func() {
+		for msg := range pubsub.Channel() {
+			var data map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Payload), &data); err == nil {
+				mu.Lock()
+				workerID := data["worker_id"].(string)
+				workerStats[workerID] = data
+				mu.Unlock()
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -299,6 +319,15 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			log.Printf("[STATS] %s | Pub:%d Rem:%d QPS:%d Q:%d%v T:%s | Pipeline[Gen:%d Json:%d Batch:%d Redis:%d]",
 				task, count, remaining, qps, totalQueued, queueLengths, elapsed.Round(time.Second),
 				raw, json, batch, redis)
+			
+			// 打印 worker 状态
+			mu.Lock()
+			for workerID, data := range workerStats {
+				log.Printf("[WORKER] %s | Update:%v Query:%v Err:%v Total:%v Q:%v",
+					workerID, data["updates"], data["queries"], data["errors"], data["total"], data["queued"])
+			}
+			workerStats = make(map[string]map[string]interface{}) // 清空，等待下一秒数据
+			mu.Unlock()
 		}
 	}
 }
