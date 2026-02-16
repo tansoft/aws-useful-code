@@ -335,29 +335,81 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 const placeholderID = "ABCDEF0123456789ABCDEF0123456789"
 
 func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
-	processedData := make(map[string]interface{})
-	for k, v := range task.Data {
-		if obj, ok := v.(map[string]interface{}); ok {
-			r := int(obj["r"].(float64))
-			//hashVal := keyGen.NextIntn(r)
-			//newKey := fmt.Sprintf("%s%d", k, hashVal)
-			newKey := keyGen.NextKeyIntn(k, r)
-			processedData[newKey] = obj["len"]
-		} else {
-			processedData[k] = v
-		}
-	}
 	var key string
 	if init {
 		key = placeholderID
 	} else {
 		key = keyGen.NextKey()
 	}
+	
 	taskData := map[string]interface{}{
 		"action": task.Action,
 		"key":    key,
-		"data":   processedData,
 	}
+	
+	// 根据不同的 action 生成不同的数据结构
+	switch task.Action {
+	case "putItem", "updateItem":
+		processedData := make(map[string]interface{})
+		for k, v := range task.Data {
+			if obj, ok := v.(map[string]interface{}); ok {
+				r := int(obj["r"].(float64))
+				newKey := keyGen.NextKeyIntn(k, r)
+				processedData[newKey] = obj["len"]
+			} else {
+				processedData[k] = v
+			}
+		}
+		taskData["data"] = processedData
+		
+	case "getItem", "deleteItem", "query":
+		// 只需要 key，不需要 data
+		
+	case "batchGetItem":
+		// 使用 samples 字段指定批量大小
+		batchSize := task.Samples
+		if batchSize == 0 {
+			batchSize = 10 // 默认批量大小
+		}
+		keys := make([]string, batchSize)
+		for i := 0; i < batchSize; i++ {
+			if init {
+				keys[i] = placeholderID
+			} else {
+				keys[i] = keyGen.NextKey()
+			}
+		}
+		taskData["keys"] = keys
+		
+	case "batchPutItem":
+		// 使用 samples 字段指定批量大小
+		batchSize := task.Samples
+		if batchSize == 0 {
+			batchSize = 10 // 默认批量大小
+		}
+		items := make(map[string]map[string]interface{})
+		for i := 0; i < batchSize; i++ {
+			var itemKey string
+			if init {
+				itemKey = placeholderID
+			} else {
+				itemKey = keyGen.NextKey()
+			}
+			processedData := make(map[string]interface{})
+			for k, v := range task.Data {
+				if obj, ok := v.(map[string]interface{}); ok {
+					r := int(obj["r"].(float64))
+					newKey := keyGen.NextKeyIntn(k, r)
+					processedData[newKey] = obj["len"]
+				} else {
+					processedData[k] = v
+				}
+			}
+			items[itemKey] = processedData
+		}
+		taskData["items"] = items
+	}
+	
 	taskJSON, _ := sonic.Marshal(taskData)
 	return taskJSON
 }

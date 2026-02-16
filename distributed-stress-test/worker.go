@@ -124,8 +124,8 @@ func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGro
 	queueKey := w.prefix + "_q" + fmt.Sprintf("%d", threadID)
 	
 	const batchSize = 100
-	const concurrency = 50
-	taskChan := make(chan map[string]interface{}, batchSize*2)
+	const concurrency = 100 // 增加并发数
+	taskChan := make(chan map[string]interface{}, batchSize*4)
 	
 	// 并发处理协程池
 	var procWg sync.WaitGroup
@@ -157,20 +157,20 @@ func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGro
 				if result, err := cmd.(*redis.StringCmd).Result(); err == nil {
 					var task map[string]interface{}
 					if sonic.UnmarshalString(result, &task) == nil {
-						taskChan <- task
-						processed++
+						select {
+						case taskChan <- task:
+							processed++
+						case <-ctx.Done():
+							close(taskChan)
+							procWg.Wait()
+							return
+						}
 					}
 				}
 			}
 			
 			if processed == 0 {
-				result, err := w.rdb.BLPop(ctx, time.Second, queueKey).Result()
-				if err == nil && len(result) > 1 {
-					var task map[string]interface{}
-					if sonic.UnmarshalString(result[1], &task) == nil {
-						taskChan <- task
-					}
-				}
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}
