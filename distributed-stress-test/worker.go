@@ -61,25 +61,45 @@ type Worker struct {
 func (w *Worker) processTask(task map[string]interface{}) {
 	action := task["action"].(string)
 	key := task["key"].(string)
-	data := task["data"].(map[string]interface{})
-
+	
+	var err error
 	switch action {
+	case "putItem":
+		data := task["data"].(map[string]interface{})
+		err = w.db.PutItem(key, data)
 	case "updateItem":
-		if err := w.db.UpdateItem(key, data); err != nil {
-			if w.stats != nil {
-				w.stats.AddError()
-			}
-		} else if w.stats != nil {
-			w.stats.AddUpdate()
-		}
+		data := task["data"].(map[string]interface{})
+		err = w.db.UpdateItem(key, data)
+	case "getItem":
+		_, err = w.db.GetItem(key)
+	case "deleteItem":
+		err = w.db.DeleteItem(key)
 	case "query":
-		if err := w.db.Query(key); err != nil {
-			if w.stats != nil {
-				w.stats.AddError()
+		err = w.db.Query(key)
+	case "batchGetItem":
+		if keys, ok := task["keys"].([]interface{}); ok {
+			keyStrs := make([]string, len(keys))
+			for i, k := range keys {
+				keyStrs[i] = k.(string)
 			}
-		} else if w.stats != nil {
-			w.stats.AddQuery()
+			_, err = w.db.BatchGetItem(keyStrs)
 		}
+	case "batchPutItem":
+		if items, ok := task["items"].(map[string]interface{}); ok {
+			itemsMap := make(map[string]map[string]interface{})
+			for k, v := range items {
+				itemsMap[k] = v.(map[string]interface{})
+			}
+			err = w.db.BatchPutItem(itemsMap)
+		}
+	}
+
+	if err != nil {
+		if w.stats != nil {
+			w.stats.AddError()
+		}
+	} else if w.stats != nil {
+		w.stats.AddUpdate()
 	}
 }
 

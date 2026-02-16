@@ -49,13 +49,81 @@ func NewRedisDB(region, tableName string) (*RedisImpl, error) {
 	return &RedisImpl{client: client, ctx: ctx}, nil
 }
 
-func (r *RedisImpl) UpdateItem(key string, data map[string]interface{}) error {
+func (r *RedisImpl) PutItem(key string, data map[string]interface{}) error {
 	processedData := make(map[string]interface{})
 	for k, v := range data {
 		processedData[k] = r.processValue(v)
 	}
 	jsonData, _ := json.Marshal(processedData)
 	return r.client.Set(r.ctx, key, jsonData, 0).Err()
+}
+
+func (r *RedisImpl) UpdateItem(key string, data map[string]interface{}) error {
+	// 先获取现有数据
+	existing := make(map[string]interface{})
+	if val, err := r.client.Get(r.ctx, key).Result(); err == nil {
+		json.Unmarshal([]byte(val), &existing)
+	}
+
+	// 更新指定列
+	for k, v := range data {
+		existing[k] = r.processValue(v)
+	}
+
+	jsonData, _ := json.Marshal(existing)
+	return r.client.Set(r.ctx, key, jsonData, 0).Err()
+}
+
+func (r *RedisImpl) GetItem(key string) (map[string]interface{}, error) {
+	val, err := r.client.Get(r.ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(val), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *RedisImpl) BatchGetItem(keys []string) ([]map[string]interface{}, error) {
+	pipe := r.client.Pipeline()
+	cmds := make([]*redis.StringCmd, len(keys))
+	for i, key := range keys {
+		cmds[i] = pipe.Get(r.ctx, key)
+	}
+	if _, err := pipe.Exec(r.ctx); err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	results := make([]map[string]interface{}, 0)
+	for _, cmd := range cmds {
+		if val, err := cmd.Result(); err == nil {
+			var item map[string]interface{}
+			if json.Unmarshal([]byte(val), &item) == nil {
+				results = append(results, item)
+			}
+		}
+	}
+	return results, nil
+}
+
+func (r *RedisImpl) BatchPutItem(items map[string]map[string]interface{}) error {
+	pipe := r.client.Pipeline()
+	for key, data := range items {
+		processedData := make(map[string]interface{})
+		for k, v := range data {
+			processedData[k] = r.processValue(v)
+		}
+		jsonData, _ := json.Marshal(processedData)
+		pipe.Set(r.ctx, key, jsonData, 0)
+	}
+	_, err := pipe.Exec(r.ctx)
+	return err
+}
+
+func (r *RedisImpl) DeleteItem(key string) error {
+	return r.client.Del(r.ctx, key).Err()
 }
 
 func (r *RedisImpl) Query(key string) error {

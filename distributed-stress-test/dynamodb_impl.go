@@ -25,7 +25,7 @@ func NewDynamoDB(region, tableName string) (*DynamoDBImpl, error) {
 	}, nil
 }
 
-func (d *DynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error {
+func (d *DynamoDBImpl) PutItem(key string, data map[string]interface{}) error {
 	item := make(map[string]*dynamodb.AttributeValue)
 	item["id"] = &dynamodb.AttributeValue{S: aws.String(key)}
 
@@ -36,6 +36,99 @@ func (d *DynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error
 	_, err := d.client.PutItem(&dynamodb.PutItemInput{
 		TableName: aws.String(d.tableName),
 		Item:      item,
+	})
+	return err
+}
+
+func (d *DynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error {
+	updateExpr := "SET "
+	exprAttrValues := make(map[string]*dynamodb.AttributeValue)
+	idx := 0
+	for k, v := range data {
+		if idx > 0 {
+			updateExpr += ", "
+		}
+		placeholder := fmt.Sprintf(":val%d", idx)
+		updateExpr += fmt.Sprintf("%s = %s", k, placeholder)
+		exprAttrValues[placeholder] = d.toAttributeValue(v)
+		idx++
+	}
+
+	_, err := d.client.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		},
+		UpdateExpression:          aws.String(updateExpr),
+		ExpressionAttributeValues: exprAttrValues,
+	})
+	return err
+}
+
+func (d *DynamoDBImpl) GetItem(key string) (map[string]interface{}, error) {
+	result, err := d.client.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d.fromAttributeValueMap(result.Item), nil
+}
+
+func (d *DynamoDBImpl) BatchGetItem(keys []string) ([]map[string]interface{}, error) {
+	keyAttrs := make([]map[string]*dynamodb.AttributeValue, len(keys))
+	for i, key := range keys {
+		keyAttrs[i] = map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		}
+	}
+
+	result, err := d.client.BatchGetItem(&dynamodb.BatchGetItemInput{
+		RequestItems: map[string]*dynamodb.KeysAndAttributes{
+			d.tableName: {Keys: keyAttrs},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]interface{}, 0)
+	for _, item := range result.Responses[d.tableName] {
+		items = append(items, d.fromAttributeValueMap(item))
+	}
+	return items, nil
+}
+
+func (d *DynamoDBImpl) BatchPutItem(items map[string]map[string]interface{}) error {
+	writeRequests := make([]*dynamodb.WriteRequest, 0, len(items))
+	for key, data := range items {
+		item := make(map[string]*dynamodb.AttributeValue)
+		item["id"] = &dynamodb.AttributeValue{S: aws.String(key)}
+		for k, v := range data {
+			item[k] = d.toAttributeValue(v)
+		}
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{Item: item},
+		})
+	}
+
+	_, err := d.client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]*dynamodb.WriteRequest{
+			d.tableName: writeRequests,
+		},
+	})
+	return err
+}
+
+func (d *DynamoDBImpl) DeleteItem(key string) error {
+	_, err := d.client.DeleteItem(&dynamodb.DeleteItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		},
 	})
 	return err
 }
@@ -63,6 +156,20 @@ func (d *DynamoDBImpl) toAttributeValue(v interface{}) *dynamodb.AttributeValue 
 	default:
 		return &dynamodb.AttributeValue{S: aws.String(fmt.Sprintf("%v", val))}
 	}
+}
+
+func (d *DynamoDBImpl) fromAttributeValueMap(item map[string]*dynamodb.AttributeValue) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range item {
+		if v.S != nil {
+			result[k] = *v.S
+		} else if v.B != nil {
+			result[k] = v.B
+		} else if v.N != nil {
+			result[k] = *v.N
+		}
+	}
+	return result
 }
 
 func (d *DynamoDBImpl) Close() error {

@@ -51,7 +51,14 @@
 文件格式为列表，顺序完成各个任务，顺序执行列表中的对象，对象中有任务的详细说明；如果对象为列表，说明该对象里是需要同时进行的子任务，这时为子任务新建线程处理，同时执行。
 
 * 字段说明：
-* action：对应 worker 中的不同任务，worker中有对应的实现，如updateItem，query。
+* action：对应 worker 中的不同任务，worker中有对应的实现，支持以下操作：
+  * **putItem**: 完整覆盖写入，替换整个item的所有列
+  * **updateItem**: 部分更新，只更新指定的列，保留其他列
+  * **getItem**: 读取单个item
+  * **deleteItem**: 删除单个item
+  * **query**: 查询操作（仅用于多行模式下，同时取回key对应的多行字段；多列模式下，功能同getItem）
+  * **batchGetItem**: 批量读取多个item（DynamoDB限制最多100个）
+  * **batchPutItem**: 批量写入多个item（DynamoDB限制最多25个）
 * seed：给随机发生器指定种子，方便多线程统一ID生成规则，随机数统一由控制端在每个任务初始化时生成，并持续使用，确保key生成顺序，不指定或指定0则生成随机。
 * seeds：给出随机种子设定几率，如：[2.2,6.6] 表示种子1的几率是25%，种子2的几率是75%，指定seed可以明确生成规律。
 * qps：指定产生多少qps的任务，需要把qps拆解到10毫秒级进行redis分批插入，以把请求分散均匀。
@@ -59,6 +66,7 @@
 * times：表示共产生多少次执行就完成。
 * duration：表示执行多长时间（秒）就完成。
 * samples：表示data数据使用seed预先生成多少份，在实际填充时，在预先生成的数据中取，加快速度，如果不指定或0表示每次都需要产生随机数据。
+*         在batchGetItem 和 batchPutItem时，表示每次批量操作的item数量，如果不指定默认10。注意DynamoDB限制：batchGetItem最多100，batchPutItem最多25。
 * data：表示对应要设置的value，data中可能存在多列，语义是整行多列一起更新。data中列名对应的value有不同含义：
   * 如果是字符串，表示是实际内容
   * 如果是数字表示是二进制数据的长度
@@ -125,12 +133,12 @@ go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go
 
 **启动 Worker（DynamoDB）：**
 ```bash
-./worker -redis localhost:6379 -prefix dst -db dynamodb
+./worker -redis localhost:6379 -prefix dst -db dynamodb -stats
 ```
 
 **启动 Worker（Redis/ElastiCache）：**
 ```bash
-./worker -redis localhost:6379 -prefix dst -db redis
+./worker -redis localhost:6379 -prefix dst -db redis -stats
 ```
 
 **参数说明：**
@@ -138,15 +146,26 @@ go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go
 - `-prefix`: Redis key 前缀，默认 dst
 - `-config`: 配置文件路径
 - `-traffic`: 流量定义文件路径
-- `-stats`: 启用统计监控（Publisher）
+- `-stats`: 启用统计监控
 - `-db`: 数据库类型，dynamodb 或 redis（Worker）
+- `-tls`: 启用 TLS 连接到 Redis
 
 **统计输出示例：**
+
+Publisher:
 ```
-[STATS] updateItem | Pub:12345 Rem:87655 QPS:5000 Q:234[45 52 48 43 46] T:2s
+[STATS] updateItem | Pub:12345 Rem:87655 QPS:5000 Q:234[45 52 48 43 46] T:2s | Pipeline[Gen:5000 Json:5000 Batch:5000 Redis:5000]
+[WORKER] ip-10-0-1-100 | Update:4523 Query:0 Err:0 Total:4523 Q:234
 ```
+
+Worker:
+```
+[STATS] Update:4523 Query:0 Err:0 Total:4523 Q:234[45 52 48 43 46] T:10s
+```
+
 - Pub: 已发布任务数
 - Rem: 剩余任务数
 - QPS: 当前 QPS
 - Q: 总队列堆积[各线程队列长度]
 - T: 运行时间
+- Update/Query/Err: Worker 处理的操作数和错误数
