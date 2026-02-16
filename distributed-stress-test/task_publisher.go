@@ -373,14 +373,14 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 
 	// 三级流水线
-	rawChan := make(chan *rawTask, 10000)
-	jsonChan := make(chan *taskItem, 50000)
-	batchChan := make(chan *taskBatch, 2000)
+	rawChan := make(chan *rawTask, 50)
+	jsonChan := make(chan *taskItem, 30)
+	batchChan := make(chan *taskBatch, 100)
 	
 	var wg sync.WaitGroup
 
 	// 阶段1: 序列化线程池
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -398,20 +398,20 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 
 	// 阶段2: 批量打包线程（优化：减少 append 开销）
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 1; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			batch := &taskBatch{tasks: make([]taskItem, 0, 3000)}
+			batch := &taskBatch{tasks: make([]taskItem, 0, 30000)}
 			
 			for item := range jsonChan {
 				batch.tasks = append(batch.tasks, *item)
-				if len(batch.tasks) >= 3000 {
+				if len(batch.tasks) >= 30000 {
 					batchChan <- batch
 					if stats != nil {
 						stats.AddBatch(len(batch.tasks))
 					}
-					batch = &taskBatch{tasks: make([]taskItem, 0, 3000)}
+					batch = &taskBatch{tasks: make([]taskItem, 0, 30000)}
 				}
 			}
 			
@@ -460,7 +460,7 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 
 	// 主线程: 数据生成（多线程并行）
-	numGenerators := 4  // 6 个生成线程
+	numGenerators := 1  // 6 个生成线程
 	var genWg sync.WaitGroup
 	taskCounter := int64(0)
 	runQPS := int64(task.QPS)
