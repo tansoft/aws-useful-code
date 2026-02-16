@@ -153,6 +153,17 @@ func (kg *KeyGenerator) NextKey() string {
 	// return fmt.Sprintf("%016x%016x", kg.rkey.Uint64(), kg.rkey.Uint64())
 }
 
+func (kg *KeyGenerator) NextKeyB(b []byte) {
+	tmp := make([]byte, 16)
+	if kg.alias != nil {
+		idx := kg.alias.Random()
+		kg.seeds[idx].Read(tmp)
+	} else {
+		kg.rkey.Read(tmp)
+	}
+	hex.Encode(b, tmp)
+}
+
 func (kg *KeyGenerator) NextIntn(num int) int {
 	return kg.rn.Intn(num)
 }
@@ -372,69 +383,48 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}
 	}
 
-	// 三级流水线
-	rawChan := make(chan *rawTask, 50)
 	jsonChan := make(chan *taskItem, 30)
-	batchChan := make(chan *taskBatch, 100)
+	batchChan := make(chan *taskBatch, 80)
 	
-	var wg sync.WaitGroup
+	var batchWg sync.WaitGroup  // 打包线程
+	var sendWg sync.WaitGroup   // 发送线程
 
-	// 阶段1: 序列化线程池
-	for i := 0; i < 1; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for raw := range rawChan {
-				taskJSON, _ := sonic.Marshal(raw.taskData)
-				jsonChan <- &taskItem{
-					queueKey: raw.queueKey,
-					data:     taskJSON,
-				}
-				if stats != nil {
-					stats.AddJson(1)
-				}
-			}
-		}()
-	}
-
-	// 阶段2: 批量打包线程（优化：减少 append 开销）
-	for i := 0; i < 1; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			batch := &taskBatch{tasks: make([]taskItem, 0, 30000)}
-			
-			for item := range jsonChan {
-				batch.tasks = append(batch.tasks, *item)
-				if len(batch.tasks) >= 30000 {
-					batchChan <- batch
-					if stats != nil {
-						stats.AddBatch(len(batch.tasks))
-					}
-					batch = &taskBatch{tasks: make([]taskItem, 0, 30000)}
-				}
-			}
-			
-			if len(batch.tasks) > 0 {
+	// 批量打包线程
+	batchWg.Add(1)
+	go func() {
+		defer batchWg.Done()
+		batch := &taskBatch{tasks: make([]taskItem, 0, 160000)}
+		
+		for item := range jsonChan {
+			batch.tasks = append(batch.tasks, *item)
+			if len(batch.tasks) >= 160000 {
 				batchChan <- batch
 				if stats != nil {
 					stats.AddBatch(len(batch.tasks))
 				}
+				batch = &taskBatch{tasks: make([]taskItem, 0, 160000)}
 			}
-		}()
-	}
+		}
+		
+		if len(batch.tasks) > 0 {
+			batchChan <- batch
+			if stats != nil {
+				stats.AddBatch(len(batch.tasks))
+			}
+		}
+	}()
 	
-	// 等待所有打包线程结束
+	// 等待打包线程结束后关闭 batchChan
 	go func() {
-		wg.Wait()
+		batchWg.Wait()
 		close(batchChan)
 	}()
 
-	// 阶段3: Redis发送线程池
+	// Redis发送线程池
 	for i := 0; i < 30; i++ {
-		wg.Add(1)
+		sendWg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer sendWg.Done()
 			queueMap := make(map[string][]interface{}, threads)
 			for batch := range batchChan {
 				for k := range queueMap {
@@ -460,7 +450,7 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 
 	// 主线程: 数据生成（多线程并行）
-	numGenerators := 1  // 6 个生成线程
+	numGenerators := 1
 	var genWg sync.WaitGroup
 	taskCounter := int64(0)
 	runQPS := int64(task.QPS)
@@ -505,13 +495,12 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 					var b []byte
 					if samples != nil {
 						hashVal := keyGen.NextIntn(len(samples))
-						// 这里更高效做法是直接转byte b := []byte(samples[hashVal]) 不用make和copy，只copy NextKey就行
 						sample := samples[hashVal]
 						keypos := samples_keypos[hashVal]
 						
 						b = make([]byte, len(sample))
 						copy(b, sample)
-						keyGen.rkey.Read(b[keypos:keypos+32])
+						keyGen.NextKeyB(b[keypos:keypos+32])
 					} else {
 						b = generateValue(task, keyGen, false)
 					}
@@ -541,10 +530,8 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 	
 	genWg.Wait()
-
-	close(rawChan)
 	close(jsonChan)
-	wg.Wait()
+	sendWg.Wait()
 }
 
 func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats) {
