@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"runtime/pprof"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/bytedance/sonic"
 )
 
@@ -443,11 +443,12 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 				for _, item := range batch.tasks {
 					queueMap[item.queueKey] = append(queueMap[item.queueKey], item.data)
 				}
-				
 				pipe := rdb.Pipeline()
 				for qkey, items := range queueMap {
 					if len(items) > 0 {
-						pipe.RPush(ctx, qkey, items...)
+						if err := pipe.RPush(ctx, qkey, items...).Err(); err != nil {
+							log.Printf("RPush error for %s: %v", qkey, err)
+						}
 					}
 				}
 				_, _ = pipe.Exec(ctx)
@@ -591,11 +592,26 @@ func main() {
 	flag.Parse()
 
 	ctx := context.Background()
-	opts := &redis.UniversalOptions{Addrs: []string{*redisAddr}}
-	if *enableTLS {
-		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	var rdb redis.UniversalClient
+	
+	// 自动检测集群模式
+	if strings.Contains(*redisAddr, "cluster") {
+		opts := &redis.ClusterOptions{
+			Addrs: []string{*redisAddr},
+		}
+		if *enableTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		rdb = redis.NewClusterClient(opts)
+	} else {
+		opts := &redis.Options{
+			Addr: *redisAddr,
+		}
+		if *enableTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		rdb = redis.NewClient(opts)
 	}
-	rdb := redis.NewUniversalClient(opts)
 
 	// Load config
 	configData, err := os.ReadFile(*configFile)

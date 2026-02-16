@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 type Config struct {
@@ -22,7 +24,7 @@ type Config struct {
 }
 
 type Worker struct {
-	rdb    *redis.Client
+	rdb    redis.UniversalClient
 	prefix string
 	config Config
 	db     Database
@@ -84,10 +86,30 @@ func main() {
 	redisAddr := flag.String("redis", "localhost:6379", "Redis address")
 	prefix := flag.String("prefix", "dst", "Redis key prefix")
 	dbType := flag.String("db", "dynamodb", "Database type: dynamodb or redis")
+	useTLS := flag.Bool("tls", false, "Use TLS for Redis connection")
 	flag.Parse()
 
 	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{Addr: *redisAddr})
+	var rdb redis.UniversalClient
+	
+	// 自动检测集群模式
+	if strings.Contains(*redisAddr, "cluster") {
+		opts := &redis.ClusterOptions{
+			Addrs: []string{*redisAddr},
+		}
+		if *useTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		rdb = redis.NewClusterClient(opts)
+	} else {
+		opts := &redis.Options{
+			Addr: *redisAddr,
+		}
+		if *useTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		rdb = redis.NewClient(opts)
+	}
 
 	cfgData, err := rdb.Get(ctx, *prefix+"_cfg").Result()
 	if err != nil {
