@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -13,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -59,8 +59,23 @@ type Worker struct {
 }
 
 func (w *Worker) processTask(task map[string]interface{}) {
-	action := task["action"].(string)
-	key := task["key"].(string)
+	action, ok := task["action"].(string)
+	if !ok {
+		log.Printf("[ERROR] Invalid action type: %+v", task)
+		if w.stats != nil {
+			w.stats.AddError()
+		}
+		return
+	}
+	
+	key, ok := task["key"].(string)
+	if !ok && action != "batchGetItem" && action != "batchPutItem" {
+		log.Printf("[ERROR] Invalid key type for action %s: %+v", action, task)
+		if w.stats != nil {
+			w.stats.AddError()
+		}
+		return
+	}
 	
 	var err error
 	switch action {
@@ -95,6 +110,7 @@ func (w *Worker) processTask(task map[string]interface{}) {
 	}
 
 	if err != nil {
+		log.Printf("[ERROR] Action %s failed for key %s: %v", action, key, err)
 		if w.stats != nil {
 			w.stats.AddError()
 		}
@@ -106,17 +122,55 @@ func (w *Worker) processTask(task map[string]interface{}) {
 func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGroup) {
 	defer wg.Done()
 	queueKey := w.prefix + "_q" + fmt.Sprintf("%d", threadID)
+	
+	const batchSize = 100
+	const concurrency = 50
+	taskChan := make(chan map[string]interface{}, batchSize*2)
+	
+	// 并发处理协程池
+	var procWg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		procWg.Add(1)
+		go func() {
+			defer procWg.Done()
+			for task := range taskChan {
+				w.processTask(task)
+			}
+		}()
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
+			close(taskChan)
+			procWg.Wait()
 			return
 		default:
-			result, err := w.rdb.BLPop(ctx, time.Second, queueKey).Result()
-			if err == nil && len(result) > 1 {
-				var task map[string]interface{}
-				json.Unmarshal([]byte(result[1]), &task)
-				w.processTask(task)
+			pipe := w.rdb.Pipeline()
+			for i := 0; i < batchSize; i++ {
+				pipe.LPop(ctx, queueKey)
+			}
+			cmds, _ := pipe.Exec(ctx)
+			
+			processed := 0
+			for _, cmd := range cmds {
+				if result, err := cmd.(*redis.StringCmd).Result(); err == nil {
+					var task map[string]interface{}
+					if sonic.UnmarshalString(result, &task) == nil {
+						taskChan <- task
+						processed++
+					}
+				}
+			}
+			
+			if processed == 0 {
+				result, err := w.rdb.BLPop(ctx, time.Second, queueKey).Result()
+				if err == nil && len(result) > 1 {
+					var task map[string]interface{}
+					if sonic.UnmarshalString(result[1], &task) == nil {
+						taskChan <- task
+					}
+				}
 			}
 		}
 	}
@@ -130,7 +184,7 @@ func (w *Worker) handleNotify(ctx context.Context) {
 		switch msg.Payload {
 		case "update_config":
 			cfgData, _ := w.rdb.Get(ctx, w.prefix+"_cfg").Result()
-			json.Unmarshal([]byte(cfgData), &w.config)
+			sonic.UnmarshalString(cfgData, &w.config)
 			log.Println("Config updated")
 		case "execute_bash":
 			// Execute bash command (implement as needed)
@@ -179,8 +233,8 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				"elapsed":   int64(elapsed.Seconds()),
 				"timestamp": time.Now().Unix(),
 			}
-			statsJSON, _ := json.Marshal(statsData)
-			rdb.Publish(ctx, prefix+"_stats", string(statsJSON))
+			statsJSON, _ := sonic.MarshalString(statsData)
+			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
 			log.Printf("[STATS] Update:%d Query:%d Err:%d Total:%d Q:%d%v T:%s",
 				updates, queries, errors, total, totalQueued, queueLengths, elapsed.Round(time.Second))
@@ -223,7 +277,7 @@ func main() {
 		log.Fatal("Failed to get config from Redis")
 	}
 	var config Config
-	json.Unmarshal([]byte(cfgData), &config)
+	sonic.UnmarshalString(cfgData, &config)
 
 	db, err := NewDatabase(*dbType, config.Region, config.TableName)
 	if err != nil {

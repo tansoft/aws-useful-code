@@ -42,15 +42,18 @@ func (d *DynamoDBImpl) PutItem(key string, data map[string]interface{}) error {
 
 func (d *DynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error {
 	updateExpr := "SET "
+	exprAttrNames := make(map[string]*string)
 	exprAttrValues := make(map[string]*dynamodb.AttributeValue)
 	idx := 0
 	for k, v := range data {
 		if idx > 0 {
 			updateExpr += ", "
 		}
-		placeholder := fmt.Sprintf(":val%d", idx)
-		updateExpr += fmt.Sprintf("%s = %s", k, placeholder)
-		exprAttrValues[placeholder] = d.toAttributeValue(v)
+		namePlaceholder := fmt.Sprintf("#n%d", idx)
+		valuePlaceholder := fmt.Sprintf(":val%d", idx)
+		updateExpr += fmt.Sprintf("%s = %s", namePlaceholder, valuePlaceholder)
+		exprAttrNames[namePlaceholder] = aws.String(k)
+		exprAttrValues[valuePlaceholder] = d.toAttributeValue(v)
 		idx++
 	}
 
@@ -60,6 +63,7 @@ func (d *DynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error
 			"id": {S: aws.String(key)},
 		},
 		UpdateExpression:          aws.String(updateExpr),
+		ExpressionAttributeNames:  exprAttrNames,
 		ExpressionAttributeValues: exprAttrValues,
 	})
 	return err
