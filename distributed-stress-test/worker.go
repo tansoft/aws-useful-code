@@ -144,9 +144,9 @@ func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGro
 	defer wg.Done()
 	queueKey := w.prefix + "_q" + fmt.Sprintf("%d", threadID)
 	
-	const batchSize = 100
-	const concurrency = 100 // 增加并发数
-	taskChan := make(chan map[string]interface{}, batchSize*4)
+	const batchSize = 500
+	const concurrency = 2000
+	taskChan := make(chan map[string]interface{}, batchSize*10)
 	
 	// 并发处理协程池
 	var procWg sync.WaitGroup
@@ -167,31 +167,23 @@ func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGro
 			procWg.Wait()
 			return
 		default:
-			pipe := w.rdb.Pipeline()
-			for i := 0; i < batchSize; i++ {
-				pipe.LPop(ctx, queueKey)
+			results, err := w.rdb.LPopCount(ctx, queueKey, batchSize).Result()
+			if err != nil || len(results) == 0 {
+				time.Sleep(10 * time.Millisecond)
+				continue
 			}
-			cmds, _ := pipe.Exec(ctx)
 			
-			processed := 0
-			for _, cmd := range cmds {
-				if result, err := cmd.(*redis.StringCmd).Result(); err == nil {
-					var task map[string]interface{}
-					if sonic.UnmarshalString(result, &task) == nil {
-						select {
-						case taskChan <- task:
-							processed++
-						case <-ctx.Done():
-							close(taskChan)
-							procWg.Wait()
-							return
-						}
+			for _, result := range results {
+				var task map[string]interface{}
+				if sonic.UnmarshalString(result, &task) == nil {
+					select {
+					case taskChan <- task:
+					case <-ctx.Done():
+						close(taskChan)
+						procWg.Wait()
+						return
 					}
 				}
-			}
-			
-			if processed == 0 {
-				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}
@@ -283,7 +275,12 @@ func main() {
 	// 自动检测集群模式
 	if strings.Contains(*redisAddr, "cluster") {
 		opts := &redis.ClusterOptions{
-			Addrs: []string{*redisAddr},
+			Addrs:        []string{*redisAddr},
+			PoolSize:     5000,
+			MinIdleConns: 100,
+			DialTimeout:  10 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		}
 		if *useTLS {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
@@ -291,7 +288,12 @@ func main() {
 		rdb = redis.NewClusterClient(opts)
 	} else {
 		opts := &redis.Options{
-			Addr: *redisAddr,
+			Addr:         *redisAddr,
+			PoolSize:     5000,
+			MinIdleConns: 100,
+			DialTimeout:  10 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		}
 		if *useTLS {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}

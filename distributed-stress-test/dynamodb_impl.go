@@ -22,13 +22,17 @@ func NewDynamoDB(region, tableName string) (*DynamoDBImpl, error) {
 	// 优化 HTTP 连接池
 	httpClient := &http.Client{
 		Transport: &http.Transport{
-			MaxIdleConns:        1000,
-			MaxIdleConnsPerHost: 1000,
+			MaxIdleConns:        10000,
+			MaxIdleConnsPerHost: 10000,
+			MaxConnsPerHost:     10000,
 			IdleConnTimeout:     90 * time.Second,
 			DialContext: (&net.Dialer{
-				Timeout:   5 * time.Second,
+				Timeout:   10 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
+			DisableKeepAlives:   false,
+			DisableCompression:  true,
+			ForceAttemptHTTP2:   false,
 		},
 		Timeout: 30 * time.Second,
 	}
