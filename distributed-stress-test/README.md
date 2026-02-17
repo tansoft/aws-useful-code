@@ -147,7 +147,7 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 ```bash
 go mod tidy
 go build -o task_publisher task_publisher.go
-go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go
+go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go multirow_dynamodb_impl.go multirow_redis_impl.go
 ```
 
 ### 测试命令
@@ -196,3 +196,64 @@ Worker:
 - Q: 总队列堆积[各线程队列长度]
 - T: 运行时间
 - Update/Query/Err: Worker 处理的操作数和错误数
+
+## 多行模式实现说明
+
+1. **multirow_dynamodb_impl.go** - DynamoDB 多行模式实现
+2. **multirow_redis_impl.go** - Redis 多行模式实现
+3. **database.go** - 更新工厂函数支持多行模式判断
+
+### 数据存储模式
+
+#### DynamoDB 多行模式
+- 使用复合主键：`id` (partition key) + `sk` (sort key)
+- 每个列存储为单独的行
+- 结构：`{id: "key", sk: "column_name", value: data}`
+
+#### Redis 多行模式
+- 使用 key 模式：`{id}:sk:{column_name}`
+- 每个列存储为单独的 Redis key
+- 示例：`user123:sk:request_1h_11`
+
+### 使用方式
+
+在 `config.json` 中，如果 `table_name` 以 `multirow` 开头，自动使用多行模式：
+
+```json
+{
+  "table_name": "multirow-stress-test",
+  "region": "us-east-1",
+  "threads": 10
+}
+```
+
+或者多列模式（默认）：
+
+```json
+{
+  "table_name": "stress-test",
+  "region": "us-east-1",
+  "threads": 10
+}
+```
+
+### 操作对应关系
+
+| 操作 | 多列模式 | 多行模式 (DynamoDB) | 多行模式 (Redis) |
+|------|---------|-------------------|-----------------|
+| putItem | 单行多列 | 多行单列 (每列一行) | 多个 key (每列一个) |
+| updateItem | UPDATE 指定列 | UPDATE 多行 | SET 多个 key |
+| getItem | GetItem 返回所有列 | Query 返回所有行 | Keys + GET 多个 key |
+| getSubItem | GetItem + Projection | GetItem 多次 | GET 多个 key |
+| query | Query 操作 | Query 操作 | Keys 模式匹配 |
+| deleteItem | DeleteItem 单行 | Query + 删除多行 | Keys + DEL 多个 key |
+
+### 性能特点
+
+#### 多列模式
+- 优点：单次操作获取完整数据，适合频繁读取完整记录
+- 缺点：更新单列需要读取整行，列数过多影响性能
+
+#### 多行模式
+- 优点：更新单列高效，适合稀疏数据和频繁部分更新
+- 缺点：读取完整记录需要多次操作或 Query

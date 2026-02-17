@@ -1,5 +1,7 @@
 package main
 
+import "strings"
+
 type Database interface {
 	UpdateItem(key string, data map[string]interface{}) error
 	Query(key string) error
@@ -13,10 +15,18 @@ type Database interface {
 }
 
 func NewDatabase(dbType, region, tableName string) (Database, error) {
+	isMultiRow := strings.HasPrefix(tableName, "multirow")
+	
 	switch dbType {
 	case "dynamodb":
+		if isMultiRow {
+			return NewMultiRowDynamoDB(region, tableName)
+		}
 		return NewDynamoDB(region, tableName)
 	case "redis":
+		if isMultiRow {
+			return NewMultiRowRedisDB(region, tableName)
+		}
 		return NewRedisDB(region, tableName)
 	default:
 		return nil, nil
