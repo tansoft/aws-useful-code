@@ -5,6 +5,7 @@ type Database interface {
 	Query(key string) error
 	PutItem(key string, data map[string]interface{}) error
 	GetItem(key string) (map[string]interface{}, error)
+	GetSubItem(key string, columns []string) (map[string]interface{}, error)
 	BatchGetItem(keys []string) ([]map[string]interface{}, error)
 	BatchPutItem(items map[string]map[string]interface{}) error
 	DeleteItem(key string) error

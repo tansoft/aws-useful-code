@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -111,6 +112,21 @@ func (d *DynamoDBImpl) GetItem(key string) (map[string]interface{}, error) {
 		Key: map[string]*dynamodb.AttributeValue{
 			"id": {S: aws.String(key)},
 		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d.fromAttributeValueMap(result.Item), nil
+}
+
+func (d *DynamoDBImpl) GetSubItem(key string, columns []string) (map[string]interface{}, error) {
+	projection := strings.Join(columns, ", ")
+	result, err := d.client.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		},
+		ProjectionExpression: aws.String(projection),
 	})
 	if err != nil {
 		return nil, err

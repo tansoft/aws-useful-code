@@ -86,6 +86,24 @@ func (r *RedisImpl) GetItem(key string) (map[string]interface{}, error) {
 	return result, nil
 }
 
+func (r *RedisImpl) GetSubItem(key string, columns []string) (map[string]interface{}, error) {
+	val, err := r.client.Get(r.ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	var allData map[string]interface{}
+	if err := json.Unmarshal([]byte(val), &allData); err != nil {
+		return nil, err
+	}
+	result := make(map[string]interface{})
+	for _, col := range columns {
+		if value, ok := allData[col]; ok {
+			result[col] = value
+		}
+	}
+	return result, nil
+}
+
 func (r *RedisImpl) BatchGetItem(keys []string) ([]map[string]interface{}, error) {
 	pipe := r.client.Pipeline()
 	cmds := make([]*redis.StringCmd, len(keys))

@@ -28,6 +28,7 @@ type WorkerStats struct {
 	putCount    int64
 	updateCount int64
 	getCount    int64
+	getSubCount int64
 	deleteCount int64
 	queryCount  int64
 	batchGetCount int64
@@ -44,6 +45,8 @@ func (s *WorkerStats) Add(action string) {
 		atomic.AddInt64(&s.updateCount, 1)
 	case "getItem":
 		atomic.AddInt64(&s.getCount, 1)
+	case "getSubItem":
+		atomic.AddInt64(&s.getSubCount, 1)
 	case "deleteItem":
 		atomic.AddInt64(&s.deleteCount, 1)
 	case "query":
@@ -59,10 +62,11 @@ func (s *WorkerStats) AddError() {
 	atomic.AddInt64(&s.errorCount, 1)
 }
 
-func (s *WorkerStats) Get() (int64, int64, int64, int64, int64, int64, int64, int64, time.Duration) {
+func (s *WorkerStats) Get() (int64, int64, int64, int64, int64, int64, int64, int64, int64, time.Duration) {
 	return atomic.SwapInt64(&s.putCount, 0),
 		atomic.SwapInt64(&s.updateCount, 0),
 		atomic.SwapInt64(&s.getCount, 0),
+		atomic.SwapInt64(&s.getSubCount, 0),
 		atomic.SwapInt64(&s.deleteCount, 0),
 		atomic.SwapInt64(&s.queryCount, 0),
 		atomic.SwapInt64(&s.batchGetCount, 0),
@@ -108,6 +112,13 @@ func (w *Worker) processTask(task map[string]interface{}) {
 		err = w.db.UpdateItem(key, data)
 	case "getItem":
 		_, err = w.db.GetItem(key)
+	case "getSubItem":
+		data := task["data"].(map[string]interface{})
+		columns := make([]string, 0, len(data))
+		for col := range data {
+			columns = append(columns, col)
+		}
+		_, err = w.db.GetSubItem(key, columns)
 	case "deleteItem":
 		err = w.db.DeleteItem(key)
 	case "query":
@@ -221,7 +232,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			put, update, get, del, query, batchGet, batchPut, errors, elapsed := stats.Get()
+			put, update, get, getSub, del, query, batchGet, batchPut, errors, elapsed := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
@@ -232,7 +243,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				totalQueued += length
 			}
 			
-			total := put + update + get + del + query + batchGet + batchPut
+			total := put + update + get + getSub + del + query + batchGet + batchPut
 			
 			// 上报到 Redis
 			statsData := map[string]interface{}{
@@ -240,6 +251,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				"put":       put,
 				"update":    update,
 				"get":       get,
+				"get_sub":   getSub,
 				"delete":    del,
 				"query":     query,
 				"batch_get": batchGet,

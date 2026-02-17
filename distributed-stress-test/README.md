@@ -55,7 +55,7 @@
   * **putItem**: 完整覆盖写入，替换整个item的所有列
   * **updateItem**: 部分更新，只更新指定的列，保留其他列
   * **getItem**: 读取单个item的所有列（多行模式下，DynamoDB实际使用Query进行操作）
-  * **getSingleItem**: 读取单个item的单个列
+  * **getSubItem**: 读取单个item的某几列
   * **deleteItem**: 删除单个item
   * **query**: 查询操作（仅用于多行模式下，同时取回key对应的多行字段；多列模式下，功能同getItem）
   * **batchGetItem**: 批量读取多个item（DynamoDB限制最多100个）

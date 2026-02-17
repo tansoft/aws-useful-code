@@ -312,8 +312,8 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			// 打印 worker 状态
 			mu.Lock()
 			for workerID, data := range workerStats {
-				log.Printf("W:%s P:%v U:%v G:%v D:%v Q:%v BG:%v BP:%v E:%v T:%v Q:%v",
-					workerID, data["put"], data["update"], data["get"], data["delete"], 
+				log.Printf("W:%s P:%v U:%v G:%v GS:%v D:%v Q:%v BG:%v BP:%v E:%v T:%v Q:%v",
+					workerID, data["put"], data["update"], data["get"], data["get_sub"], data["delete"], 
 					data["query"], data["batch_get"], data["batch_put"], data["errors"], 
 					data["total"], data["queued"])
 			}
@@ -345,7 +345,7 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 	}
 	// 根据不同的 action 生成不同的数据结构
 	switch task.Action {
-	case "putItem", "updateItem":
+	case "putItem", "updateItem", "getSubItem":
 		processedData := make(map[string]interface{})
 		for k, v := range task.Data {
 			if obj, ok := v.(map[string]interface{}); ok {
@@ -357,10 +357,10 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 			}
 		}
 		taskData["data"] = processedData
-		
+
 	case "getItem", "deleteItem", "query":
 		// 只需要 key，不需要 data
-		
+
 	case "batchGetItem":
 		// 使用 samples 字段指定批量大小
 		batchSize := task.Samples
