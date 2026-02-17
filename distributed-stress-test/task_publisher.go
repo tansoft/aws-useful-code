@@ -312,8 +312,10 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			// 打印 worker 状态
 			mu.Lock()
 			for workerID, data := range workerStats {
-				log.Printf("W:%s U:%v Q:%v E:%v T:%v Q:%v",
-					workerID, data["updates"], data["queries"], data["errors"], data["total"], data["queued"])
+				log.Printf("W:%s P:%v U:%v G:%v D:%v Q:%v BG:%v BP:%v E:%v T:%v Q:%v",
+					workerID, data["put"], data["update"], data["get"], data["delete"], 
+					data["query"], data["batch_get"], data["batch_put"], data["errors"], 
+					data["total"], data["queued"])
 			}
 			workerStats = make(map[string]map[string]interface{}) // 清空，等待下一秒数据
 			mu.Unlock()

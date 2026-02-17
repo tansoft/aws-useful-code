@@ -25,27 +25,48 @@ type Config struct {
 }
 
 type WorkerStats struct {
+	putCount    int64
 	updateCount int64
+	getCount    int64
+	deleteCount int64
 	queryCount  int64
+	batchGetCount int64
+	batchPutCount int64
 	errorCount  int64
 	startTime   time.Time
 }
 
-func (s *WorkerStats) AddUpdate() {
-	atomic.AddInt64(&s.updateCount, 1)
-}
-
-func (s *WorkerStats) AddQuery() {
-	atomic.AddInt64(&s.queryCount, 1)
+func (s *WorkerStats) Add(action string) {
+	switch action {
+	case "putItem":
+		atomic.AddInt64(&s.putCount, 1)
+	case "updateItem":
+		atomic.AddInt64(&s.updateCount, 1)
+	case "getItem":
+		atomic.AddInt64(&s.getCount, 1)
+	case "deleteItem":
+		atomic.AddInt64(&s.deleteCount, 1)
+	case "query":
+		atomic.AddInt64(&s.queryCount, 1)
+	case "batchGetItem":
+		atomic.AddInt64(&s.batchGetCount, 1)
+	case "batchPutItem":
+		atomic.AddInt64(&s.batchPutCount, 1)
+	}
 }
 
 func (s *WorkerStats) AddError() {
 	atomic.AddInt64(&s.errorCount, 1)
 }
 
-func (s *WorkerStats) Get() (int64, int64, int64, time.Duration) {
-	return atomic.SwapInt64(&s.updateCount, 0),
+func (s *WorkerStats) Get() (int64, int64, int64, int64, int64, int64, int64, int64, time.Duration) {
+	return atomic.SwapInt64(&s.putCount, 0),
+		atomic.SwapInt64(&s.updateCount, 0),
+		atomic.SwapInt64(&s.getCount, 0),
+		atomic.SwapInt64(&s.deleteCount, 0),
 		atomic.SwapInt64(&s.queryCount, 0),
+		atomic.SwapInt64(&s.batchGetCount, 0),
+		atomic.SwapInt64(&s.batchPutCount, 0),
 		atomic.SwapInt64(&s.errorCount, 0),
 		time.Since(s.startTime)
 }
@@ -115,7 +136,7 @@ func (w *Worker) processTask(task map[string]interface{}) {
 			w.stats.AddError()
 		}
 	} else if w.stats != nil {
-		w.stats.AddUpdate()
+		w.stats.Add(action)
 	}
 }
 
@@ -208,7 +229,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			updates, queries, errors, elapsed := stats.Get()
+			put, update, get, del, query, batchGet, batchPut, errors, elapsed := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
@@ -219,13 +240,18 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				totalQueued += length
 			}
 			
-			total := updates + queries
+			total := put + update + get + del + query + batchGet + batchPut
 			
 			// 上报到 Redis
 			statsData := map[string]interface{}{
 				"worker_id": workerID,
-				"updates":   updates,
-				"queries":   queries,
+				"put":       put,
+				"update":    update,
+				"get":       get,
+				"delete":    del,
+				"query":     query,
+				"batch_get": batchGet,
+				"batch_put": batchPut,
 				"errors":    errors,
 				"total":     total,
 				"queued":    totalQueued,
@@ -236,8 +262,9 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			statsJSON, _ := sonic.MarshalString(statsData)
 			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
-			log.Printf("[STATS] Update:%d Query:%d Err:%d Total:%d Q:%d%v T:%s",
-				updates, queries, errors, total, totalQueued, queueLengths, elapsed.Round(time.Second))
+			log.Printf("T:%s P:%d U:%d G:%d D:%d Q:%d BG:%d BP:%d E:%d T:%d Q:%d%v",
+				elapsed.Round(time.Second),
+				put, update, get, del, query, batchGet, batchPut, errors, total, totalQueued, queueLengths)
 		}
 	}
 }
