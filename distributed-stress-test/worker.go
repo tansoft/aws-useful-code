@@ -113,7 +113,7 @@ func (w *Worker) processTask(task map[string]interface{}) {
 	case "query":
 		err = w.db.Query(key)
 	case "batchGetItem":
-		if keys, ok := task["keys"].([]interface{}); ok {
+		if keys, ok := task["items"].([]interface{}); ok {
 			keyStrs := make([]string, len(keys))
 			for i, k := range keys {
 				keyStrs[i] = k.(string)

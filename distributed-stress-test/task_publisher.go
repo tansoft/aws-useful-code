@@ -304,7 +304,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			remaining := int64(total) - count
 			if len(task) > 0 {
 				// remain->[Json/Batch/Redis]->done
-				log.Printf("T:%s %s %dk->[%d/%dcat/%dk]->%dk QPS:%dk Q:%dk%v",
+				log.Printf("T:%s %s %dk->[%d/%d/%dk]->%dk QPS:%dk Q:%dk%v",
 					elapsed.Round(time.Second), task, remaining/1000, json/1000, batch/1000, redis/1000, count/1000,
 					qps/1000, totalQueued, queueLengths)
 			}
@@ -326,18 +326,23 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 const placeholderID = "ABCDEF0123456789ABCDEF0123456789"
 
 func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
-	var key string
-	if init {
-		key = placeholderID
+	var taskData map[string]interface{}
+	if task.Action == "batchGetItem" || task.Action == "batchPutItem" {
+		taskData = map[string]interface{}{
+			"action": task.Action,
+		}
 	} else {
-		key = keyGen.NextKey()
+		var key string
+		if init {
+			key = placeholderID
+		} else {
+			key = keyGen.NextKey()
+		}
+		taskData = map[string]interface{}{
+			"action": task.Action,
+			"key":    key,
+		}
 	}
-	
-	taskData := map[string]interface{}{
-		"action": task.Action,
-		"key":    key,
-	}
-	
 	// 根据不同的 action 生成不同的数据结构
 	switch task.Action {
 	case "putItem", "updateItem":
@@ -370,7 +375,7 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 				keys[i] = keyGen.NextKey()
 			}
 		}
-		taskData["keys"] = keys
+		taskData["items"] = keys
 		
 	case "batchPutItem":
 		// 使用 samples 字段指定批量大小
@@ -441,7 +446,8 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 
 	var samples [][]byte = nil
 	var samples_keypos []int = nil
-	if task.Samples != 0 {
+	// batchGetItem/batchPutItem 模式下，Data都全新生成不提前造数据，相当于putItem不指定samples参数生成的效果。
+	if task.Samples != 0 && task.Action != "batchGetItem" && task.Action != "batchPutItem" {
 		samples = make([][]byte, task.Samples)
 		samples_keypos = make([]int, task.Samples)
 		for i := 0; i < task.Samples; i++ {
@@ -519,6 +525,7 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 					queueMap[k] = queueMap[k][:0]
 				}
 				for _, item := range batch.tasks {
+					//fmt.Println(item.queueKey, string(item.data))
 					queueMap[item.queueKey] = append(queueMap[item.queueKey], item.data)
 				}
 				pipe := rdb.Pipeline()

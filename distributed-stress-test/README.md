@@ -54,7 +54,8 @@
 * action：对应 worker 中的不同任务，worker中有对应的实现，支持以下操作：
   * **putItem**: 完整覆盖写入，替换整个item的所有列
   * **updateItem**: 部分更新，只更新指定的列，保留其他列
-  * **getItem**: 读取单个item
+  * **getItem**: 读取单个item的所有列（多行模式下，DynamoDB实际使用Query进行操作）
+  * **getSingleItem**: 读取单个item的单个列
   * **deleteItem**: 删除单个item
   * **query**: 查询操作（仅用于多行模式下，同时取回key对应的多行字段；多列模式下，功能同getItem）
   * **batchGetItem**: 批量读取多个item（DynamoDB限制最多100个）
@@ -64,9 +65,35 @@
 * qps：指定产生多少qps的任务，需要把qps拆解到10毫秒级进行redis分批插入，以把请求分散均匀。
 * qpss：提供24小时内的变化数组，0表示该小时数据需要平滑生成，可能存在相邻多个小时为0的情况。
 * times：表示共产生多少次执行就完成。
-* duration：表示执行多长时间（秒）就完成。
+* duration：表示执行多长时间（秒）就完成，需要确保精确数量和固定随机值请使用times指定。
 * samples：表示data数据使用seed预先生成多少份，在实际填充时，在预先生成的数据中取，加快速度，如果不指定或0表示每次都需要产生随机数据。
 *         在batchGetItem 和 batchPutItem时，表示每次批量操作的item数量，如果不指定默认10。注意DynamoDB限制：batchGetItem最多100，batchPutItem最多25。
+*         注意：因为samples在这个时候指定item数量，item不会预先生成，随机逻辑相当于没有指定samples。以下操作两者相等。
+
+```json
+  {
+    "action": "updateItem",
+    "seed": 2,
+    "qps": 5,
+    "times": 30,
+    "data": {
+      "randomkey_": {"r": 16, "len": 2000},
+      "longkey": 10000
+    }
+  },
+  {
+    "action": "batchPutItem",
+    "seed": 2,
+    "qps": 5,
+    "times": 10,
+    "samples": 3,
+    "data": {
+      "randomkey_": {"r": 16, "len": 2000},
+      "longkey": 10000
+    }
+  }
+```
+
 * data：表示对应要设置的value，data中可能存在多列，语义是整行多列一起更新。data中列名对应的value有不同含义：
   * 如果是字符串，表示是实际内容
   * 如果是数字表示是二进制数据的长度
