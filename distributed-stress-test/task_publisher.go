@@ -220,29 +220,23 @@ type Stats struct {
 	//mu          sync.Mutex
 	currentTask string
 	totalTasks  int
+	finish      int64
 	qps         int
 	startTime   time.Time
 	
 	// 使用 atomic 避免锁
-	taskCount     int64
-	lastTaskCount int64
-	rawCount      int64
 	jsonCount     int64
 	batchCount    int64
 	redisCount    int64
 }
 
-func (s *Stats) Update(task string, count, total, qps int) {
-	atomic.StoreInt64(&s.taskCount, int64(count))
-	//s.mu.Lock()
+func (s *Stats) Update(task string, total, qps int, reset bool) {
 	s.currentTask = task
 	s.totalTasks = total
 	s.qps = qps
-	//s.mu.Unlock()
-}
-
-func (s *Stats) AddRaw(n int) {
-	atomic.AddInt64(&s.rawCount, int64(n))
+	if reset {
+		s.finish = 0
+	}
 }
 
 func (s *Stats) AddJson(n int) {
@@ -257,22 +251,13 @@ func (s *Stats) AddRedis(n int) {
 	atomic.AddInt64(&s.redisCount, int64(n))
 }
 
-func (s *Stats) Get() (string, int64, int, int, time.Duration, int64, int64, int64, int64) {
-	taskCount := atomic.LoadInt64(&s.taskCount)
-	//lastTaskCount := atomic.SwapInt64(&s.lastTaskCount, taskCount)
-	
-	raw := atomic.SwapInt64(&s.rawCount, 0)
+func (s *Stats) Get() (string, int64, int, int, time.Duration, int64, int64, int64) {
 	json := atomic.SwapInt64(&s.jsonCount, 0)
 	batch := atomic.SwapInt64(&s.batchCount, 0)
 	redis := atomic.SwapInt64(&s.redisCount, 0)
+	s.finish += redis
 	
-	//s.mu.Lock()
-	task := s.currentTask
-	total := s.totalTasks
-	qps := s.qps
-	//s.mu.Unlock()
-	
-	return task, taskCount, total, qps, time.Since(s.startTime), raw, json, batch, redis
+	return s.currentTask, s.finish, s.totalTasks, s.qps, time.Since(s.startTime), json, batch, redis
 }
 
 func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *Stats) {
@@ -304,26 +289,30 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			task, count, total, qps, elapsed, raw, json, batch, redis := stats.Get()
+			task, count, total, qps, elapsed, json, batch, redis := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
 			for i := 0; i < threads; i++ {
 				queueKey := fmt.Sprintf("%s_q%d", prefix, i)
 				length, _ := rdb.LLen(ctx, queueKey).Result()
+				length = length/1000
 				queueLengths[i] = length
 				totalQueued += length
 			}
 			
 			remaining := int64(total) - count
-			log.Printf("[STATS] %s | Pub:%d Rem:%d QPS:%d Q:%d%v T:%s | Pipeline[Gen:%d Json:%d Batch:%d Redis:%d]",
-				task, count, remaining, qps, totalQueued, queueLengths, elapsed.Round(time.Second),
-				raw, json, batch, redis)
+			if len(task) > 0 {
+				// remain->[Json/Batch/Redis]->done
+				log.Printf("T:%s %s %dk->[%d/%dcat/%dk]->%dk QPS:%dk Q:%dk%v",
+					elapsed.Round(time.Second), task, remaining/1000, json/1000, batch/1000, redis/1000, count/1000,
+					qps/1000, totalQueued, queueLengths)
+			}
 			
 			// 打印 worker 状态
 			mu.Lock()
 			for workerID, data := range workerStats {
-				log.Printf("[WORKER] %s | Update:%v Query:%v Err:%v Total:%v Q:%v",
+				log.Printf("W:%s U:%v Q:%v E:%v T:%v Q:%v",
 					workerID, data["updates"], data["queries"], data["errors"], data["total"], data["queued"])
 			}
 			workerStats = make(map[string]map[string]interface{}) // 清空，等待下一秒数据
@@ -423,21 +412,16 @@ type taskItem struct {
 	data     []byte
 }
 
-type rawTask struct {
-	queueKey string
-	taskData map[string]interface{}
-}
-
 func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
 	totalTasks := task.Times
+	var endTime time.Time
 	if task.Duration > 0 {
-		//fixme，这里如果是流量曲线图会不准，改为判断时间会好一点
-		totalTasks = task.QPS * task.Duration
-	}
-	if task.Times > 0 && task.Duration > 0 {
-		if task.Times < totalTasks {
-			totalTasks = task.Times
+		endTime = time.Now().Add(time.Duration(task.Duration) * time.Second)
+		if task.Times == 0 {
+			totalTasks = task.QPS * task.Duration
 		}
+	} else {
+		endTime = time.Now().Add(time.Duration(100) * 365 * 86400 * time.Second)
 	}
 
 	qpss := task.QPSs
@@ -464,8 +448,29 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}
 	}
 
-	jsonChan := make(chan *taskItem, 30)
-	batchChan := make(chan *taskBatch, 80)
+	runQPS := task.QPS
+	var batchIntval,jsonBuffer,batchBuffer,taskIntval,redisThread int
+
+	if runQPS > 100000 {
+		batchIntval = 100
+		jsonBuffer = 30
+		batchBuffer = 80
+		taskIntval = 160000
+		redisThread = 30
+	} else {
+		batchIntval = 10
+		jsonBuffer = 3
+		batchBuffer = 3
+		taskIntval = 1000
+		redisThread = 5
+	}
+
+	if stats != nil {
+		stats.Update(task.Action, totalTasks, runQPS, true)
+	}
+
+	jsonChan := make(chan *taskItem, jsonBuffer)
+	batchChan := make(chan *taskBatch, batchBuffer)
 	
 	var batchWg sync.WaitGroup  // 打包线程
 	var sendWg sync.WaitGroup   // 发送线程
@@ -474,16 +479,16 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	batchWg.Add(1)
 	go func() {
 		defer batchWg.Done()
-		batch := &taskBatch{tasks: make([]taskItem, 0, 160000)}
+		batch := &taskBatch{tasks: make([]taskItem, 0, taskIntval)}
 		
 		for item := range jsonChan {
 			batch.tasks = append(batch.tasks, *item)
-			if len(batch.tasks) >= 160000 {
+			if len(batch.tasks) >= taskIntval {
 				batchChan <- batch
 				if stats != nil {
 					stats.AddBatch(len(batch.tasks))
 				}
-				batch = &taskBatch{tasks: make([]taskItem, 0, 160000)}
+				batch = &taskBatch{tasks: make([]taskItem, 0, taskIntval)}
 			}
 		}
 		
@@ -502,7 +507,7 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}()
 
 	// Redis发送线程池
-	for i := 0; i < 30; i++ {
+	for i := 0; i < redisThread; i++ {
 		sendWg.Add(1)
 		go func() {
 			defer sendWg.Done()
@@ -530,89 +535,78 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		}()
 	}
 
-	// 主线程: 数据生成（多线程并行）
-	numGenerators := 1
-	var genWg sync.WaitGroup
-	taskCounter := int64(0)
-	runQPS := int64(task.QPS)
+	// 主线程: 数据生成
+	taskCounter := 0
 	startTime := time.Now()
 	nextTime := startTime
+	lastHour := -1
+	threadIdx := 0
+	var i int
 
-	for g := 0; g < numGenerators; g++ {
-		genWg.Add(1)
-		go func(generatorID int) {
-			defer genWg.Done()
-			keyGen := NewKeyGenerator(int64(task.Seed+generatorID), task.Seeds)
-			threadIdx := generatorID
-
-			for {
-				currentCount := atomic.LoadInt64(&taskCounter)
-				if int(currentCount) >= totalTasks {
-					break
+	for {
+		if nextTime.After(endTime) || taskCounter >= totalTasks {
+			break
+		}
+		if len(qpss) > 0 {
+			hour := int(nextTime.Hour()) % 24
+			if hour != lastHour {
+				lastHour = hour
+				runQPS = int(float64(task.QPS) * qpss[hour])
+				if task.Times == 0 {
+					totalTasks = runQPS * task.Duration
 				}
-				if generatorID == 0 && len(qpss) > 0 {
-					elapsed := time.Since(startTime)
-					if elapsed > time.Minute {
-						startTime = time.Now()
-						hour := int(elapsed.Hours()) % 24
-						runQPS = int64(float64(task.QPS) * qpss[hour])
-						if stats != nil {
-							stats.Update(task.Action, int(currentCount), totalTasks, int(runQPS))
-						}
-					}
-				}
-				currentQPS := int(atomic.LoadInt64(&runQPS))
-
-				batchSize := currentQPS / 100 / numGenerators
-				if batchSize == 0 {
-					batchSize = 1
-				}
-
-				for i := 0; i < batchSize; i++ {
-					if atomic.AddInt64(&taskCounter, 1) > int64(totalTasks) {
-						atomic.AddInt64(&taskCounter, -1)
-						break
-					}
-					var b []byte
-					if samples != nil {
-						hashVal := keyGen.NextIntn(len(samples))
-						sample := samples[hashVal]
-						keypos := samples_keypos[hashVal]
-						
-						b = make([]byte, len(sample))
-						copy(b, sample)
-						keyGen.NextKeyB(b[keypos:keypos+32])
-					} else {
-						b = generateValue(task, keyGen, false)
-					}
-					jsonChan <- &taskItem{
-						queueKey: queueKeys[threadIdx],
-						data:     b,
-					}
-					
-					threadIdx += numGenerators
-					if threadIdx >= threads {
-						threadIdx = generatorID
-					}
-					
-					if stats != nil {
-						stats.AddRaw(1)
-					}
-				}
-				nextTime = nextTime.Add(time.Millisecond * 10)
-				sleepDuration := time.Until(nextTime)
-				//如果性能赶不上，就不sleep了
-				if sleepDuration > 0 {
-					fmt.Println("sleep", sleepDuration, taskCounter)
-					time.Sleep(sleepDuration)
+				if stats != nil {
+					stats.Update(task.Action, totalTasks, runQPS, false)
 				}
 			}
-		}(g)
+		}
+
+		batchSize := runQPS / batchIntval
+		if batchSize == 0 {
+			batchSize = 1
+		}
+
+		for i = 0; i < batchSize && taskCounter < totalTasks; i++ {
+			taskCounter++
+			var b []byte
+			if samples != nil {
+				hashVal := keyGen.NextIntn(len(samples))
+				sample := samples[hashVal]
+				keypos := samples_keypos[hashVal]
+				
+				b = make([]byte, len(sample))
+				copy(b, sample)
+				keyGen.NextKeyB(b[keypos:keypos+32])
+			} else {
+				b = generateValue(task, keyGen, false)
+			}
+			jsonChan <- &taskItem{
+				queueKey: queueKeys[threadIdx],
+				data:     b,
+			}
+			
+			threadIdx++
+			if threadIdx >= threads {
+				threadIdx = 0
+			}
+		}
+		if stats != nil {
+			stats.AddJson(i)
+		}
+
+		nextTime = nextTime.Add(time.Millisecond * 10)
+		sleepDuration := time.Until(nextTime)
+		if sleepDuration > 0 {
+			time.Sleep(sleepDuration)
+		}
 	}
 	
-	genWg.Wait()
 	close(jsonChan)
 	sendWg.Wait()
+	if stats != nil {
+		// for final print
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats) {

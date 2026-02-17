@@ -6,7 +6,7 @@
     "times": 100000,
     "samples": 0,
     "data": {
-      "randomkey_": {"r": 16, "len": 8000},
+      "randomkey_": {"r": 16, "len": 2000},
       "longkey": 10000,
       "text": "this is text"
     }
@@ -18,7 +18,7 @@
     "duration": 2,
     "samples": 16,
     "data": {
-      "randomkey_": {"r": 16, "len": 8000},
+      "randomkey_": {"r": 16, "len": 2000},
       "longkey": 10000,
       "text": "this is text"
     }
