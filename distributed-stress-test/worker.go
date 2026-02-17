@@ -266,9 +266,9 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			statsJSON, _ := sonic.MarshalString(statsData)
 			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
-			log.Printf("T:%s P:%d U:%d G:%d D:%d Q:%d BG:%d BP:%d E:%d T:%d Q:%d%v",
+			log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d Q:%d BG:%d BP:%d E:%d T:%d Q:%d%v",
 				elapsed.Round(time.Second),
-				put, update, get, del, query, batchGet, batchPut, errors, total, totalQueued, queueLengths)
+				put, update, get, getSub, del, query, batchGet, batchPut, errors, total, totalQueued, queueLengths)
 		}
 	}
 }
