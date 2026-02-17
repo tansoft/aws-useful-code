@@ -81,6 +81,7 @@ type Worker struct {
 	config Config
 	db     Database
 	stats  *WorkerStats
+	debug  bool
 }
 
 func (w *Worker) processTask(task map[string]interface{}) {
@@ -106,30 +107,82 @@ func (w *Worker) processTask(task map[string]interface{}) {
 	switch action {
 	case "putItem":
 		data := task["data"].(map[string]interface{})
+		if w.debug {
+			log.Printf("[DEBUG] putItem key=%s data=%+v", key, data)
+		}
 		err = w.db.PutItem(key, data)
 	case "updateItem":
 		data := task["data"].(map[string]interface{})
+		if w.debug {
+			log.Printf("[DEBUG] updateItem key=%s data=%+v", key, data)
+		}
 		err = w.db.UpdateItem(key, data)
 	case "getItem":
-		_, err = w.db.GetItem(key)
+		if w.debug {
+			log.Printf("[DEBUG] getItem key=%s", key)
+		}
+		result, err := w.db.GetItem(key)
+		if w.debug {
+			if err == nil {
+				log.Printf("[DEBUG] getItem result=%+v", result)
+			} else {
+				log.Printf("[DEBUG] getItem error=%v", err)
+			}
+		}
 	case "getSubItem":
 		data := task["data"].(map[string]interface{})
 		columns := make([]string, 0, len(data))
 		for col := range data {
 			columns = append(columns, col)
 		}
-		_, err = w.db.GetSubItem(key, columns)
+		if w.debug {
+			log.Printf("[DEBUG] getSubItem key=%s columns=%v", key, columns)
+		}
+		result, err := w.db.GetSubItem(key, columns)
+		if w.debug {
+			if err == nil {
+				log.Printf("[DEBUG] getSubItem result=%+v", result)
+			} else {
+				log.Printf("[DEBUG] getSubItem error=%v", err)
+			}
+		}
 	case "deleteItem":
+		if w.debug {
+			log.Printf("[DEBUG] deleteItem key=%s", key)
+		}
 		err = w.db.DeleteItem(key)
+		if w.debug && err != nil {
+			log.Printf("[DEBUG] deleteItem error=%v", err)
+		}
 	case "query":
-		err = w.db.Query(key)
+		if w.debug {
+			log.Printf("[DEBUG] query key=%s", key)
+		}
+		result, err := w.db.GetItem(key)
+		if w.debug {
+			if err == nil {
+				log.Printf("[DEBUG] query result=%+v", result)
+			} else {
+				log.Printf("[DEBUG] query error=%v", err)
+			}
+		}
 	case "batchGetItem":
 		if keys, ok := task["items"].([]interface{}); ok {
 			keyStrs := make([]string, len(keys))
 			for i, k := range keys {
 				keyStrs[i] = k.(string)
 			}
-			_, err = w.db.BatchGetItem(keyStrs)
+			if w.debug {
+				log.Printf("[DEBUG] batchGetItem keys=%v", keyStrs)
+			}
+			result, err := w.db.BatchGetItem(keyStrs)
+			if w.debug {
+				if err == nil {
+					log.Printf("[DEBUG] batchGetItem result=%+v", result)
+				} else {
+					log.Printf("[DEBUG] batchGetItem error=%v", err)
+				}
+			}
 		}
 	case "batchPutItem":
 		if items, ok := task["items"].(map[string]interface{}); ok {
@@ -137,7 +190,13 @@ func (w *Worker) processTask(task map[string]interface{}) {
 			for k, v := range items {
 				itemsMap[k] = v.(map[string]interface{})
 			}
+			if w.debug {
+				log.Printf("[DEBUG] batchPutItem items=%+v", itemsMap)
+			}
 			err = w.db.BatchPutItem(itemsMap)
+			if w.debug && err != nil {
+				log.Printf("[DEBUG] batchPutItem error=%v", err)
+			}
 		}
 	}
 
@@ -279,6 +338,7 @@ func main() {
 	dbType := flag.String("db", "dynamodb", "Database type: dynamodb or redis")
 	useTLS := flag.Bool("tls", false, "Use TLS for Redis connection")
 	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
+	debug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -332,7 +392,7 @@ func main() {
 		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
 	}
 
-	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db, stats: stats}
+	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db, stats: stats, debug: *debug}
 
 	go worker.handleNotify(ctx)
 

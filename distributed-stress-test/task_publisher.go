@@ -419,7 +419,7 @@ type taskItem struct {
 	data     []byte
 }
 
-func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats) {
+func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, task Task, stats *Stats, debug bool) {
 	totalTasks := task.Times
 	var endTime time.Time
 	if task.Duration > 0 {
@@ -525,7 +525,9 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 					queueMap[k] = queueMap[k][:0]
 				}
 				for _, item := range batch.tasks {
-					//fmt.Println(item.queueKey, string(item.data))
+					if debug {
+						fmt.Println(item.queueKey, string(item.data))
+					}
 					queueMap[item.queueKey] = append(queueMap[item.queueKey], item.data)
 				}
 				pipe := rdb.Pipeline()
@@ -632,7 +634,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 						var task Task
 						json.Unmarshal(taskJSON, &task)
 						log.Printf("Publishing parallel task: action=%s, qps=%d\n", task.Action, task.QPS)
-						publishTask(ctx, rdb, prefix, threads, task, stats)
+						publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
 					}(subItem)
 				}
 				wg.Wait()
@@ -641,7 +643,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 				var task Task
 				json.Unmarshal(taskJSON, &task)
 				log.Printf("Publishing list task: action=%s, qps=%d\n", task.Action, task.QPS)
-				publishTask(ctx, rdb, prefix, threads, task, stats)
+				publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
 			}
 		}
 	case map[string]interface{}:
@@ -649,7 +651,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 		var task Task
 		json.Unmarshal(taskJSON, &task)
 		log.Printf("Publishing task: action=%s, qps=%d\n", task.Action, task.QPS)
-		publishTask(ctx, rdb, prefix, threads, task, stats)
+		publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
 	}
 }
 
@@ -660,6 +662,7 @@ func main() {
 	trafficFile := flag.String("traffic", "traffic.json", "Traffic file path")
 	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
 	enableTLS := flag.Bool("tls", false, "Enable TLS connection to Redis")
+	debug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
 
 	ctx := context.Background()

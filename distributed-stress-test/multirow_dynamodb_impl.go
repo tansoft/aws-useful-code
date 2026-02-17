@@ -60,41 +60,30 @@ func NewMultiRowDynamoDB(region, tableName string) (*MultiRowDynamoDBImpl, error
 }
 
 func (d *MultiRowDynamoDBImpl) PutItem(key string, data map[string]interface{}) error {
-	for col, v := range data {
-		item := map[string]*dynamodb.AttributeValue{
-			"id":    {S: aws.String(key)},
-			"sk":    {S: aws.String(col)},
-			"value": d.toAttributeValue(v),
-		}
-		if _, err := d.client.PutItem(&dynamodb.PutItemInput{
-			TableName: aws.String(d.tableName),
-			Item:      item,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
+	//严格上来说，PutItem应该把不在data中的sk项都删除
+	return d.UpdateItem(key, data)
 }
 
 func (d *MultiRowDynamoDBImpl) UpdateItem(key string, data map[string]interface{}) error {
+	writeRequests := make([]*dynamodb.WriteRequest, 0, len(data))
 	for col, v := range data {
-		_, err := d.client.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName: aws.String(d.tableName),
-			Key: map[string]*dynamodb.AttributeValue{
-				"id": {S: aws.String(key)},
-				"sk": {S: aws.String(col)},
-			},
-			UpdateExpression: aws.String("SET #v = :val"),
-			ExpressionAttributeNames: map[string]*string{
-				"#v": aws.String("value"),
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":val": d.toAttributeValue(v),
+		item := map[string]*dynamodb.AttributeValue{
+			"id":  {S: aws.String(key)},
+			"sk":  {S: aws.String(col)},
+			"val": d.toAttributeValue(v),
+		}
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{Item: item},
+		})
+	}
+	
+	if len(writeRequests) > 0 {
+		_, err := d.client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]*dynamodb.WriteRequest{
+				d.tableName: writeRequests,
 			},
 		})
-		if err != nil {
-			return err
-		}
+		return err
 	}
 	return nil
 }
@@ -114,7 +103,7 @@ func (d *MultiRowDynamoDBImpl) GetItem(key string) (map[string]interface{}, erro
 	data := make(map[string]interface{})
 	for _, item := range result.Items {
 		if sk := item["sk"]; sk != nil && sk.S != nil {
-			data[*sk.S] = d.fromAttributeValue(item["value"])
+			data[*sk.S] = d.fromAttributeValue(item["val"])
 		}
 	}
 	return data, nil
@@ -134,27 +123,90 @@ func (d *MultiRowDynamoDBImpl) GetSubItem(key string, columns []string) (map[str
 			return nil, err
 		}
 		if result.Item != nil {
-			data[col] = d.fromAttributeValue(result.Item["value"])
+			data[col] = d.fromAttributeValue(result.Item["val"])
 		}
 	}
 	return data, nil
 }
 
 func (d *MultiRowDynamoDBImpl) BatchGetItem(keys []string) ([]map[string]interface{}, error) {
-	results := make([]map[string]interface{}, 0, len(keys))
-	for _, key := range keys {
-		item, err := d.GetItem(key)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, item)
+	type result struct {
+		data map[string]interface{}
+		err  error
+		idx  int
 	}
+	
+	resultChan := make(chan result, len(keys))
+	for i, key := range keys {
+		go func(idx int, k string) {
+			queryResult, err := d.client.Query(&dynamodb.QueryInput{
+				TableName:              aws.String(d.tableName),
+				KeyConditionExpression: aws.String("id = :key"),
+				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+					":key": {S: aws.String(k)},
+				},
+			})
+			if err != nil {
+				resultChan <- result{err: err, idx: idx}
+				return
+			}
+			
+			data := make(map[string]interface{})
+			for _, item := range queryResult.Items {
+				if sk := item["sk"]; sk != nil && sk.S != nil {
+					data[*sk.S] = d.fromAttributeValue(item["val"])
+				}
+			}
+			resultChan <- result{data: data, idx: idx}
+		}(i, key)
+	}
+	
+	resultMap := make(map[int]map[string]interface{})
+	for i := 0; i < len(keys); i++ {
+		r := <-resultChan
+		if r.err != nil {
+			return nil, r.err
+		}
+		resultMap[r.idx] = r.data
+	}
+	
+	results := make([]map[string]interface{}, len(keys))
+	for i := 0; i < len(keys); i++ {
+		results[i] = resultMap[i]
+	}
+	
 	return results, nil
 }
 
 func (d *MultiRowDynamoDBImpl) BatchPutItem(items map[string]map[string]interface{}) error {
+	writeRequests := make([]*dynamodb.WriteRequest, 0)
+	
 	for key, data := range items {
-		if err := d.PutItem(key, data); err != nil {
+		for col, v := range data {
+			item := map[string]*dynamodb.AttributeValue{
+				"id":  {S: aws.String(key)},
+				"sk":  {S: aws.String(col)},
+				"val": d.toAttributeValue(v),
+			}
+			writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+				PutRequest: &dynamodb.PutRequest{Item: item},
+			})
+		}
+	}
+	
+	// DynamoDB BatchWriteItem 限制每次最多25个item，需要分批
+	for i := 0; i < len(writeRequests); i += 25 {
+		end := i + 25
+		if end > len(writeRequests) {
+			end = len(writeRequests)
+		}
+		
+		_, err := d.client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]*dynamodb.WriteRequest{
+				d.tableName: writeRequests[i:end],
+			},
+		})
+		if err != nil {
 			return err
 		}
 	}
