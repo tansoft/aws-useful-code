@@ -698,6 +698,7 @@ func main() {
 	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
 	enableTLS := flag.Bool("tls", false, "Enable TLS connection to Redis")
 	debug := flag.Bool("debug", false, "Enable debug logging")
+	prof := flag.Bool("prof", false, "Enable CPU Prof")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -757,13 +758,14 @@ func main() {
 	log.Println("Warming up...")
 	time.Sleep(2 * time.Second)
 
-	f, _ := os.Create("cpu.prof")
-    defer f.Close()
-    // 开始 CPU 分析
-    pprof.StartCPUProfile(f)
-    defer pprof.StopCPUProfile()
-
-	// performanceTest()
+    // CPU 性能分析
+	if *prof {
+		f, _ := os.Create("cpu.prof")
+    	defer f.Close()
+    	pprof.StartCPUProfile(f)
+    	defer pprof.StopCPUProfile()
+		// performanceTest()
+	}
 
 	processTraffic(ctx, rdb, *prefix, config.Threads, traffic, stats, *debug)
 
