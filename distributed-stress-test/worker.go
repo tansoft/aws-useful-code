@@ -212,7 +212,9 @@ func (w *Worker) processTask(task map[string]interface{}) {
 	}
 
 	if err != nil {
-		log.Printf("[ERROR] Action %s failed for key %s: %v", action, key, err)
+		if w.debug {
+			log.Printf("[ERROR] Action %s failed for key %s: %v", action, key, err)
+		}
 		if w.stats != nil {
 			w.stats.AddError()
 		}
@@ -290,7 +292,7 @@ func (w *Worker) handleNotify(ctx context.Context) {
 	}
 }
 
-func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *WorkerStats) {
+func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *WorkerStats, debug bool) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	
@@ -336,9 +338,11 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			statsJSON, _ := sonic.MarshalString(statsData)
 			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
-			log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d BG:%d BGS:%d BP:%d E:%d T:%d Q:%d%v",
-				elapsed.Round(time.Second),
-				put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, total, totalQueued, queueLengths)
+			if debug {
+				log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d BG:%d BGS:%d BP:%d E:%d T:%d Q:%d%v",
+					elapsed.Round(time.Second),
+					put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, total, totalQueued, queueLengths)
+			}
 		}
 	}
 }
@@ -400,7 +404,7 @@ func main() {
 	var stats *WorkerStats
 	if *enableStats {
 		stats = &WorkerStats{startTime: time.Now()}
-		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
+		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats, *debug)
 	}
 
 	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db, stats: stats, debug: *debug}
