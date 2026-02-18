@@ -168,6 +168,14 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 ./worker -redis localhost:6379 -prefix dst -db redis -stats
 ```
 
+**启动分布式 Worker **
+```bash
+./start_stress.sh 10 -db dynamodb -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -stats
+
+#控制端
+nohup ./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -traffic traffic_write.json -stats &
+```
+
 **参数说明：**
 - `-redis`: Redis 地址（用于任务队列和配置管理）
 - `-prefix`: Redis key 前缀，默认 dst
