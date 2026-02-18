@@ -50,13 +50,8 @@ func NewMultiRowRedisDB(region, tableName string) (*MultiRowRedisImpl, error) {
 }
 
 func (r *MultiRowRedisImpl) PutItem(key string, data map[string]interface{}) error {
-	pipe := r.client.Pipeline()
-	for col, v := range data {
-		field := fmt.Sprintf("%s:sk:%s", key, col)
-		pipe.Set(r.ctx, field, r.processValue(v), 0)
-	}
-	_, err := pipe.Exec(r.ctx)
-	return err
+	//严格上来说，PutItem应该把不在data中的sk项都删除
+	return r.UpdateItem(key, data)
 }
 
 func (r *MultiRowRedisImpl) UpdateItem(key string, data map[string]interface{}) error {
@@ -165,10 +160,16 @@ func (r *MultiRowRedisImpl) DeleteItem(key string) error {
 	return nil
 }
 
-func (r *MultiRowRedisImpl) Query(key string) error {
-	pattern := fmt.Sprintf("%s:sk:*", key)
-	_, err := r.client.Keys(r.ctx, pattern).Result()
-	return err
+func (r *MultiRowRedisImpl) BatchGetSubItem(keys []string, columns []string) ([]map[string]interface{}, error) {
+	results := make([]map[string]interface{}, 0, len(keys))
+	for _, key := range keys {
+		item, err := r.GetSubItem(key, columns)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, nil
 }
 
 func (r *MultiRowRedisImpl) processValue(v interface{}) interface{} {

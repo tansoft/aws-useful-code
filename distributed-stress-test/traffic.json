@@ -1,39 +1,82 @@
 [
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 1,
-    "qps": 50000,
-    "times": 100000,
-    "samples": 0,
+    "qps": 2,
+    "times": 2,
     "data": {
-      "randomkey_": {"r": 16, "len": 2000},
-      "longkey": 10000,
-      "text": "this is text"
+      "randomkey_": {"r": 16, "len": 10},
+      "sthkey": 5
     }
   },
   {
     "action": "updateItem",
-    "seed": 2,
-    "qps": 2000000,
-    "duration": 2,
-    "samples": 16,
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "samples": 1,
     "data": {
-      "randomkey_": {"r": 16, "len": 2000},
-      "longkey": 10000,
-      "text": "this is text"
+      "randomkey_": {"r": 16, "len": 5},
+      "sthkey": 5
     }
   },
   {
-    "action": "query",
-    "qps": 2000000,
+    "action": "getItem",
     "seed": 1,
-    "times": 4000000
+    "qps": 2,
+    "times": 2
   },
   {
-    "action": "query",
-    "qps": 2000000,
-    "qpss": [0.7042, 0, 0, 0, 0.7746, 0, 0, 0, 0, 0.9718, 1.0000, 0, 0.8451, 0.5493, 0, 0.4225, 0, 0, 0, 0, 0.4789, 0.5634, 0, 0.6901],
-    "seeds": [15.38, 48.58],
-    "duration": 2
+    "action": "getSubItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "data": {
+      "randomkey_": {"r": 16, "len": 5},
+      "sthkey": 5
+    }
+  },
+  {
+    "action": "getSubItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "samples": 1,
+    "data": {
+      "randomkey_": {"r": 16, "len": 5}
+    }
+  },
+  {
+    "action": "batchPutItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "samples": 2,
+    "data": {
+      "randomkey_": {"r": 16, "len": 2}
+    }
+  },
+  {
+    "action": "batchGetItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "samples": 2
+  },
+  {
+    "action": "batchGetSubItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 2,
+    "samples": 2,
+    "data": {
+      "randomkey_": {"r": 16, "len": 2}
+    }
+  },
+  {
+    "action": "deleteItem",
+    "seed": 1,
+    "qps": 2,
+    "times": 4
   }
 ]

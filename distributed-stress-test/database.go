@@ -4,11 +4,11 @@ import "strings"
 
 type Database interface {
 	UpdateItem(key string, data map[string]interface{}) error
-	Query(key string) error
 	PutItem(key string, data map[string]interface{}) error
 	GetItem(key string) (map[string]interface{}, error)
 	GetSubItem(key string, columns []string) (map[string]interface{}, error)
 	BatchGetItem(keys []string) ([]map[string]interface{}, error)
+	BatchGetSubItem(keys []string, columns []string) ([]map[string]interface{}, error)
 	BatchPutItem(items map[string]map[string]interface{}) error
 	DeleteItem(key string) error
 	Close() error

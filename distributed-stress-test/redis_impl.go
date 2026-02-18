@@ -144,8 +144,32 @@ func (r *RedisImpl) DeleteItem(key string) error {
 	return r.client.Del(r.ctx, key).Err()
 }
 
-func (r *RedisImpl) Query(key string) error {
-	return r.client.Get(r.ctx, key).Err()
+func (r *RedisImpl) BatchGetSubItem(keys []string, columns []string) ([]map[string]interface{}, error) {
+	pipe := r.client.Pipeline()
+	cmds := make([]*redis.StringCmd, len(keys))
+	for i, key := range keys {
+		cmds[i] = pipe.Get(r.ctx, key)
+	}
+	if _, err := pipe.Exec(r.ctx); err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	results := make([]map[string]interface{}, 0)
+	for _, cmd := range cmds {
+		result := make(map[string]interface{})
+		if val, err := cmd.Result(); err == nil {
+			var allData map[string]interface{}
+			if json.Unmarshal([]byte(val), &allData) == nil {
+				for _, col := range columns {
+					if value, ok := allData[col]; ok {
+						result[col] = value
+					}
+				}
+			}
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func (r *RedisImpl) processValue(v interface{}) interface{} {

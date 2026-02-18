@@ -25,16 +25,16 @@ type Config struct {
 }
 
 type WorkerStats struct {
-	putCount    int64
-	updateCount int64
-	getCount    int64
-	getSubCount int64
-	deleteCount int64
-	queryCount  int64
-	batchGetCount int64
-	batchPutCount int64
-	errorCount  int64
-	startTime   time.Time
+	putCount       int64
+	updateCount    int64
+	getCount       int64
+	getSubCount    int64
+	deleteCount    int64
+	batchGetCount  int64
+	batchGetSubCount int64
+	batchPutCount  int64
+	errorCount     int64
+	startTime      time.Time
 }
 
 func (s *WorkerStats) Add(action string) {
@@ -49,10 +49,10 @@ func (s *WorkerStats) Add(action string) {
 		atomic.AddInt64(&s.getSubCount, 1)
 	case "deleteItem":
 		atomic.AddInt64(&s.deleteCount, 1)
-	case "query":
-		atomic.AddInt64(&s.queryCount, 1)
 	case "batchGetItem":
 		atomic.AddInt64(&s.batchGetCount, 1)
+	case "batchGetSubItem":
+		atomic.AddInt64(&s.batchGetSubCount, 1)
 	case "batchPutItem":
 		atomic.AddInt64(&s.batchPutCount, 1)
 	}
@@ -68,8 +68,8 @@ func (s *WorkerStats) Get() (int64, int64, int64, int64, int64, int64, int64, in
 		atomic.SwapInt64(&s.getCount, 0),
 		atomic.SwapInt64(&s.getSubCount, 0),
 		atomic.SwapInt64(&s.deleteCount, 0),
-		atomic.SwapInt64(&s.queryCount, 0),
 		atomic.SwapInt64(&s.batchGetCount, 0),
+		atomic.SwapInt64(&s.batchGetSubCount, 0),
 		atomic.SwapInt64(&s.batchPutCount, 0),
 		atomic.SwapInt64(&s.errorCount, 0),
 		time.Since(s.startTime)
@@ -95,7 +95,7 @@ func (w *Worker) processTask(task map[string]interface{}) {
 	}
 	
 	key, ok := task["key"].(string)
-	if !ok && action != "batchGetItem" && action != "batchPutItem" {
+	if !ok && action != "batchGetItem" && action != "batchGetSubItem" && action != "batchPutItem" {
 		log.Printf("[ERROR] Invalid key type for action %s: %+v", action, task)
 		if w.stats != nil {
 			w.stats.AddError()
@@ -154,18 +154,6 @@ func (w *Worker) processTask(task map[string]interface{}) {
 		if w.debug && err != nil {
 			log.Printf("[DEBUG] deleteItem error=%v", err)
 		}
-	case "query":
-		if w.debug {
-			log.Printf("[DEBUG] query key=%s", key)
-		}
-		result, err := w.db.GetItem(key)
-		if w.debug {
-			if err == nil {
-				log.Printf("[DEBUG] query result=%+v", result)
-			} else {
-				log.Printf("[DEBUG] query error=%v", err)
-			}
-		}
 	case "batchGetItem":
 		if keys, ok := task["items"].([]interface{}); ok {
 			keyStrs := make([]string, len(keys))
@@ -181,6 +169,29 @@ func (w *Worker) processTask(task map[string]interface{}) {
 					log.Printf("[DEBUG] batchGetItem result=%+v", result)
 				} else {
 					log.Printf("[DEBUG] batchGetItem error=%v", err)
+				}
+			}
+		}
+	case "batchGetSubItem":
+		if keys, ok := task["items"].([]interface{}); ok {
+			keyStrs := make([]string, len(keys))
+			for i, k := range keys {
+				keyStrs[i] = k.(string)
+			}
+			data := task["data"].(map[string]interface{})
+			columns := make([]string, 0, len(data))
+			for col := range data {
+				columns = append(columns, col)
+			}
+			if w.debug {
+				log.Printf("[DEBUG] batchGetSubItem keys=%v columns=%v", keyStrs, columns)
+			}
+			result, err := w.db.BatchGetSubItem(keyStrs, columns)
+			if w.debug {
+				if err == nil {
+					log.Printf("[DEBUG] batchGetSubItem result=%+v", result)
+				} else {
+					log.Printf("[DEBUG] batchGetSubItem error=%v", err)
 				}
 			}
 		}
@@ -291,7 +302,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			put, update, get, getSub, del, query, batchGet, batchPut, errors, elapsed := stats.Get()
+			put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, elapsed := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
@@ -302,7 +313,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				totalQueued += length
 			}
 			
-			total := put + update + get + getSub + del + query + batchGet + batchPut
+			total := put + update + get + getSub + del + batchGet + batchGetSub + batchPut
 			
 			// 上报到 Redis
 			statsData := map[string]interface{}{
@@ -312,8 +323,8 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 				"get":       get,
 				"get_sub":   getSub,
 				"delete":    del,
-				"query":     query,
 				"batch_get": batchGet,
+				"batch_get_sub": batchGetSub,
 				"batch_put": batchPut,
 				"errors":    errors,
 				"total":     total,
@@ -325,9 +336,9 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			statsJSON, _ := sonic.MarshalString(statsData)
 			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
-			log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d Q:%d BG:%d BP:%d E:%d T:%d Q:%d%v",
+			log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d BG:%d BGS:%d BP:%d E:%d T:%d Q:%d%v",
 				elapsed.Round(time.Second),
-				put, update, get, getSub, del, query, batchGet, batchPut, errors, total, totalQueued, queueLengths)
+				put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, total, totalQueued, queueLengths)
 		}
 	}
 }

@@ -189,15 +189,32 @@ func (d *DynamoDBImpl) DeleteItem(key string) error {
 	return err
 }
 
-func (d *DynamoDBImpl) Query(key string) error {
-	_, err := d.client.Query(&dynamodb.QueryInput{
-		TableName:              aws.String(d.tableName),
-		KeyConditionExpression: aws.String("id = :key"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":key": {S: aws.String(key)},
+func (d *DynamoDBImpl) BatchGetSubItem(keys []string, columns []string) ([]map[string]interface{}, error) {
+	projection := strings.Join(columns, ", ")
+	keyAttrs := make([]map[string]*dynamodb.AttributeValue, len(keys))
+	for i, key := range keys {
+		keyAttrs[i] = map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+		}
+	}
+
+	result, err := d.client.BatchGetItem(&dynamodb.BatchGetItemInput{
+		RequestItems: map[string]*dynamodb.KeysAndAttributes{
+			d.tableName: {
+				Keys:                 keyAttrs,
+				ProjectionExpression: aws.String(projection),
+			},
 		},
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]interface{}, 0)
+	for _, item := range result.Responses[d.tableName] {
+		items = append(items, d.fromAttributeValueMap(item))
+	}
+	return items, nil
 }
 
 func (d *DynamoDBImpl) toAttributeValue(v interface{}) *dynamodb.AttributeValue {

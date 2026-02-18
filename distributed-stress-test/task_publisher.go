@@ -312,9 +312,9 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			// 打印 worker 状态
 			mu.Lock()
 			for workerID, data := range workerStats {
-				log.Printf("W:%s P:%v U:%v G:%v GS:%v D:%v Q:%v BG:%v BP:%v E:%v T:%v Q:%v",
+				log.Printf("W:%s P:%v U:%v G:%v GS:%v D:%v BG:%v BGS:%v BP:%v E:%v T:%v Q:%v",
 					workerID, data["put"], data["update"], data["get"], data["get_sub"], data["delete"], 
-					data["query"], data["batch_get"], data["batch_put"], data["errors"], 
+					data["batch_get"], data["batch_get_sub"], data["batch_put"], data["errors"], 
 					data["total"], data["queued"])
 			}
 			workerStats = make(map[string]map[string]interface{}) // 清空，等待下一秒数据
@@ -327,7 +327,7 @@ const placeholderID = "ABCDEF0123456789ABCDEF0123456789"
 
 func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 	var taskData map[string]interface{}
-	if task.Action == "batchGetItem" || task.Action == "batchPutItem" {
+	if task.Action == "batchGetItem" || task.Action == "batchGetSubItem" || task.Action == "batchPutItem" {
 		taskData = map[string]interface{}{
 			"action": task.Action,
 		}
@@ -358,7 +358,7 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 		}
 		taskData["data"] = processedData
 
-	case "getItem", "deleteItem", "query":
+	case "getItem", "deleteItem":
 		// 只需要 key，不需要 data
 
 	case "batchGetItem":
@@ -376,6 +376,33 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 			}
 		}
 		taskData["items"] = keys
+		
+	case "batchGetSubItem":
+		// 使用 samples 字段指定批量大小
+		batchSize := task.Samples
+		if batchSize == 0 {
+			batchSize = 10 // 默认批量大小
+		}
+		keys := make([]string, batchSize)
+		processedData := make(map[string]interface{})
+		for i := 0; i < batchSize; i++ {
+			if init {
+				keys[i] = placeholderID
+			} else {
+				keys[i] = keyGen.NextKey()
+			}
+			for k, v := range task.Data {
+				if obj, ok := v.(map[string]interface{}); ok {
+					r := int(obj["r"].(float64))
+					newKey := keyGen.NextKeyIntn(k, r)
+					processedData[newKey] = obj["len"]
+				} else {
+					processedData[k] = v
+				}
+			}
+		}
+		taskData["items"] = keys
+		taskData["data"] = processedData
 		
 	case "batchPutItem":
 		// 使用 samples 字段指定批量大小
@@ -446,8 +473,8 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 
 	var samples [][]byte = nil
 	var samples_keypos []int = nil
-	// batchGetItem/batchPutItem 模式下，Data都全新生成不提前造数据，相当于putItem不指定samples参数生成的效果。
-	if task.Samples != 0 && task.Action != "batchGetItem" && task.Action != "batchPutItem" {
+	// batchGetItem/batchGetSubItem/batchPutItem 模式下，Data都全新生成不提前造数据，相当于putItem不指定samples参数生成的效果。
+	if task.Samples != 0 && task.Action != "batchGetItem" && task.Action != "batchGetSubItem" && task.Action != "batchPutItem" {
 		samples = make([][]byte, task.Samples)
 		samples_keypos = make([]int, task.Samples)
 		for i := 0; i < task.Samples; i++ {

@@ -1,5 +1,5 @@
 {
-  "table_name": "stress-test",
+  "table_name": "multirow-street-test",
   "region": "us-east-1",
   "threads": 10
 }

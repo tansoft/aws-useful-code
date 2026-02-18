@@ -110,20 +110,27 @@ func (d *MultiRowDynamoDBImpl) GetItem(key string) (map[string]interface{}, erro
 }
 
 func (d *MultiRowDynamoDBImpl) GetSubItem(key string, columns []string) (map[string]interface{}, error) {
-	data := make(map[string]interface{})
-	for _, col := range columns {
-		result, err := d.client.GetItem(&dynamodb.GetItemInput{
-			TableName: aws.String(d.tableName),
-			Key: map[string]*dynamodb.AttributeValue{
-				"id": {S: aws.String(key)},
-				"sk": {S: aws.String(col)},
-			},
-		})
-		if err != nil {
-			return nil, err
+	keyAttrs := make([]map[string]*dynamodb.AttributeValue, len(columns))
+	for i, col := range columns {
+		keyAttrs[i] = map[string]*dynamodb.AttributeValue{
+			"id": {S: aws.String(key)},
+			"sk": {S: aws.String(col)},
 		}
-		if result.Item != nil {
-			data[col] = d.fromAttributeValue(result.Item["val"])
+	}
+
+	result, err := d.client.BatchGetItem(&dynamodb.BatchGetItemInput{
+		RequestItems: map[string]*dynamodb.KeysAndAttributes{
+			d.tableName: {Keys: keyAttrs},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	data := make(map[string]interface{})
+	for _, item := range result.Responses[d.tableName] {
+		if sk := item["sk"]; sk != nil && sk.S != nil {
+			data[*sk.S] = d.fromAttributeValue(item["val"])
 		}
 	}
 	return data, nil
@@ -240,15 +247,48 @@ func (d *MultiRowDynamoDBImpl) DeleteItem(key string) error {
 	return nil
 }
 
-func (d *MultiRowDynamoDBImpl) Query(key string) error {
-	_, err := d.client.Query(&dynamodb.QueryInput{
-		TableName:              aws.String(d.tableName),
-		KeyConditionExpression: aws.String("id = :key"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":key": {S: aws.String(key)},
+func (d *MultiRowDynamoDBImpl) BatchGetSubItem(keys []string, columns []string) ([]map[string]interface{}, error) {
+	keyAttrs := make([]map[string]*dynamodb.AttributeValue, 0)
+	for _, key := range keys {
+		for _, col := range columns {
+			keyAttrs = append(keyAttrs, map[string]*dynamodb.AttributeValue{
+				"id": {S: aws.String(key)},
+				"sk": {S: aws.String(col)},
+			})
+		}
+	}
+
+	result, err := d.client.BatchGetItem(&dynamodb.BatchGetItemInput{
+		RequestItems: map[string]*dynamodb.KeysAndAttributes{
+			d.tableName: {Keys: keyAttrs},
 		},
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := make(map[string]map[string]interface{})
+	for _, item := range result.Responses[d.tableName] {
+		if id := item["id"]; id != nil && id.S != nil {
+			if sk := item["sk"]; sk != nil && sk.S != nil {
+				keyStr := *id.S
+				if itemMap[keyStr] == nil {
+					itemMap[keyStr] = make(map[string]interface{})
+				}
+				itemMap[keyStr][*sk.S] = d.fromAttributeValue(item["val"])
+			}
+		}
+	}
+
+	items := make([]map[string]interface{}, 0)
+	for _, key := range keys {
+		if data, ok := itemMap[key]; ok {
+			items = append(items, data)
+		} else {
+			items = append(items, make(map[string]interface{}))
+		}
+	}
+	return items, nil
 }
 
 func (d *MultiRowDynamoDBImpl) toAttributeValue(v interface{}) *dynamodb.AttributeValue {
