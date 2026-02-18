@@ -176,6 +176,15 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 nohup ./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -traffic traffic_write.json -stats &
 ```
 
+**管理命令**
+```bash
+# Clear all queues
+./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -manage clear
+
+# Monitor worker stats only
+./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -manage monitor
+```
+
 **参数说明：**
 - `-redis`: Redis 地址（用于任务队列和配置管理）
 - `-prefix`: Redis key 前缀，默认 dst

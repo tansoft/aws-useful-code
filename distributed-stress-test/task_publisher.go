@@ -690,6 +690,15 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 	}
 }
 
+func clearQueues(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int) {
+	for i := 0; i < threads; i++ {
+		queueKey := fmt.Sprintf("%s_q%d", prefix, i)
+		deleted, _ := rdb.Del(ctx, queueKey).Result()
+		log.Printf("Cleared queue %s: %d tasks removed", queueKey, deleted)
+	}
+	log.Println("All queues cleared")
+}
+
 func main() {
 	redisAddr := flag.String("redis", "localhost:6379", "Redis address")
 	prefix := flag.String("prefix", "dst", "Redis key prefix")
@@ -699,6 +708,7 @@ func main() {
 	enableTLS := flag.Bool("tls", false, "Enable TLS connection to Redis")
 	debug := flag.Bool("debug", false, "Enable debug logging")
 	prof := flag.Bool("prof", false, "Enable CPU Prof")
+	manage := flag.String("manage", "", "Management mode: clear (clear queues) | monitor (monitor worker stats only)")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -730,6 +740,21 @@ func main() {
 	}
 	var config Config
 	json.Unmarshal(configData, &config)
+
+	// 管理模式
+	if *manage != "" {
+		switch *manage {
+		case "clear":
+			clearQueues(ctx, rdb, *prefix, config.Threads)
+		case "monitor":
+			log.Println("Monitor-only mode: listening to worker stats...")
+			stats := &Stats{startTime: time.Now()}
+			statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
+		default:
+			log.Fatalf("Unknown manage command: %s (available: clear, monitor)", *manage)
+		}
+		return
+	}
 
 	// Check and update config in Redis
 	cfgKey := *prefix + "_cfg"
