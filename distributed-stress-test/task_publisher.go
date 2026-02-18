@@ -228,6 +228,7 @@ type Stats struct {
 	jsonCount     int64
 	batchCount    int64
 	redisCount    int64
+	delayMs       int64  // 累计延迟毫秒数
 }
 
 func (s *Stats) Update(task string, total, qps int, reset bool) {
@@ -251,13 +252,18 @@ func (s *Stats) AddRedis(n int) {
 	atomic.AddInt64(&s.redisCount, int64(n))
 }
 
-func (s *Stats) Get() (string, int64, int, int, time.Duration, int64, int64, int64) {
+func (s *Stats) AddDelay(d time.Duration) {
+	atomic.AddInt64(&s.delayMs, d.Milliseconds())
+}
+
+func (s *Stats) Get() (string, int64, int, int, time.Duration, int64, int64, int64, int64) {
 	json := atomic.SwapInt64(&s.jsonCount, 0)
 	batch := atomic.SwapInt64(&s.batchCount, 0)
 	redis := atomic.SwapInt64(&s.redisCount, 0)
+	delay := atomic.SwapInt64(&s.delayMs, 0)
 	s.finish += redis
 	
-	return s.currentTask, s.finish, s.totalTasks, s.qps, time.Since(s.startTime), json, batch, redis
+	return s.currentTask, s.finish, s.totalTasks, s.qps, time.Since(s.startTime), json, batch, redis, delay
 }
 
 func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, stats *Stats) {
@@ -289,7 +295,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			task, count, total, qps, elapsed, json, batch, redis := stats.Get()
+			task, count, total, qps, elapsed, json, batch, redis, delay := stats.Get()
 			
 			queueLengths := make([]int64, threads)
 			var totalQueued int64
@@ -303,10 +309,10 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			
 			remaining := int64(total) - count
 			if len(task) > 0 {
-				// remain->[Json/Batch/Redis]->done
-				log.Printf("T:%s %s %dk->[%d/%d/%dk]->%dk QPS:%dk Q:%dk%v",
+				// remain->[Json/Batch/Redis]->done QPS Delay
+				log.Printf("T:%s %s %dk->[%d/%d/%dk]->%dk QPS:%dk(-%dms) Q:%dk%v",
 					elapsed.Round(time.Second), task, remaining/1000, json/1000, batch/1000, redis/1000, count/1000,
-					qps/1000, totalQueued, queueLengths)
+					qps/1000, delay, totalQueued, queueLengths)
 			}
 			
 			// 打印 worker 状态
@@ -636,6 +642,8 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 		sleepDuration := time.Until(nextTime)
 		if sleepDuration > 0 {
 			time.Sleep(sleepDuration)
+		} else if stats != nil {
+			stats.AddDelay(-sleepDuration)
 		}
 	}
 	

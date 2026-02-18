@@ -147,9 +147,7 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 ### 编译
 
 ```bash
-go mod tidy
-go build -o task_publisher task_publisher.go
-go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go multirow_dynamodb_impl.go multirow_redis_impl.go
+./build.sh
 ```
 
 ### 测试命令
@@ -183,8 +181,8 @@ go build -o worker worker.go database.go dynamodb_impl.go redis_impl.go multirow
 
 Publisher:
 ```
-# 当前时间 T:经过时间 任务类型 Remind->[Gen/Batch/Redis]->Published QPS:当前QPS Q:当前消费队列[队列1 队列2 ... 队列10]
-2026/02/18 02:46:10 T:3s putItem 87k->[8/6/5k]->0k QPS:8k Q:3k[2 3 4 3 4 2 2 3 2 4]
+# 当前时间 T:经过时间 任务类型 Remind->[Gen/Batch/Redis]->Published QPS:当前QPS(性能不够的误差ms) Q:当前消费队列[队列1 队列2 ... 队列10]
+2026/02/18 02:46:10 T:3s putItem 87k->[8/6/5k]->0k QPS:8k(-0ms) Q:3k[2 3 4 3 4 2 2 3 2 4]
 # 当前时间 W:节点名称 P:PutItem U:UpdateItem G:GetItem GS:GetSubItem D:DeleteItem BG:BatchGetItem BGS:BatchGetSubItem BP:BatchPutItem E:Error T:Total Q:Queue[详细列表]
 2026/02/18 02:46:09 W:ip-10-21-2-136.ap-northeast-1.compute.internal P:0 U:0 G:0 GS:0 D:0 BG:0 BGS:0 BP:0 E:0 T:0 Q:0
 
