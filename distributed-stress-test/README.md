@@ -57,8 +57,8 @@
   * **getItem**: 读取单个item的所有列（多行模式下，DynamoDB实际使用Query进行操作）
   * **getSubItem**: 读取单个item的某几列
   * **deleteItem**: 删除单个item
-  * **query**: 查询操作（仅用于多行模式下，同时取回key对应的多行字段；多列模式下，功能同getItem）
-  * **batchGetItem**: 批量读取多个item（DynamoDB限制最多100个）
+  * **batchGetItem**: 批量读取多个item（DynamoDB限制最多100个，多列模式下，DynamoDB实际使用多次Query完成）
+  * **batchGetSubItem**: 批量读取多个item（DynamoDB限制最多100个，多列模式下，DynamoDB实际使用batchGetItem完成）
   * **batchPutItem**: 批量写入多个item（DynamoDB限制最多25个）
 * seed：给随机发生器指定种子，方便多线程统一ID生成规则，随机数统一由控制端在每个任务初始化时生成，并持续使用，确保key生成顺序，不指定或指定0则生成随机。
 * seeds：给出随机种子设定几率，如：[2.2,6.6] 表示种子1的几率是25%，种子2的几率是75%，指定seed可以明确生成规律。

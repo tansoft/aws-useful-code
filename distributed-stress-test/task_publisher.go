@@ -620,7 +620,7 @@ func publishTask(ctx context.Context, rdb redis.UniversalClient, prefix string, 
 	}
 }
 
-func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats) {
+func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix string, threads int, traffic interface{}, stats *Stats, debug bool) {
 	switch v := traffic.(type) {
 	case []interface{}:
 		for _, item := range v {
@@ -634,7 +634,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 						var task Task
 						json.Unmarshal(taskJSON, &task)
 						log.Printf("Publishing parallel task: action=%s, qps=%d\n", task.Action, task.QPS)
-						publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
+						publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 					}(subItem)
 				}
 				wg.Wait()
@@ -643,7 +643,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 				var task Task
 				json.Unmarshal(taskJSON, &task)
 				log.Printf("Publishing list task: action=%s, qps=%d\n", task.Action, task.QPS)
-				publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
+				publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 			}
 		}
 	case map[string]interface{}:
@@ -651,7 +651,7 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 		var task Task
 		json.Unmarshal(taskJSON, &task)
 		log.Printf("Publishing task: action=%s, qps=%d\n", task.Action, task.QPS)
-		publishTask(ctx, rdb, prefix, threads, task, stats, *debug)
+		publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 	}
 }
 
@@ -730,7 +730,7 @@ func main() {
 
 	// performanceTest()
 
-	processTraffic(ctx, rdb, *prefix, config.Threads, traffic, stats)
+	processTraffic(ctx, rdb, *prefix, config.Threads, traffic, stats, *debug)
 
 	log.Println("All tasks published")
 }

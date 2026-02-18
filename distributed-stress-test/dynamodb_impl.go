@@ -196,7 +196,6 @@ func (d *DynamoDBImpl) Query(key string) error {
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":key": {S: aws.String(key)},
 		},
-		Limit: aws.Int64(10),
 	})
 	return err
 }
