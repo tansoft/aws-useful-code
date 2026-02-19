@@ -1,7 +1,7 @@
 [
   {
     "action": "updateItem",
-    "seed": 0,
+    "seed": 1,
     "qps": 625000,
     "times": 687188083,
     "samples": 16,
@@ -11,7 +11,7 @@
   },
   {
     "action": "updateItem",
-    "seed": 1,
+    "seed": 2,
     "qps": 277778,
     "times": 2170660028,
     "samples": 16,
@@ -22,7 +22,7 @@
   },
   {
     "action": "updateItem",
-    "seed": 2,
+    "seed": 3,
     "qps": 250000,
     "times": 328993975,
     "samples": 32,
@@ -34,7 +34,7 @@
   },
   {
     "action": "updateItem",
-    "seed": 3,
+    "seed": 4,
     "qps": 227273,
     "times": 1008786728,
     "samples": 32,
@@ -47,7 +47,7 @@
   },
   {
     "action": "updateItem",
-    "seed": 4,
+    "seed": 5,
     "qps": 208333,
     "times": 215165366,
     "samples": 32,
@@ -61,7 +61,7 @@
   },
   {
     "action": "updateItem",
-    "seed": 5,
+    "seed": 6,
     "qps": 94340,
     "times": 57463421,
     "samples": 32,
