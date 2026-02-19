@@ -92,7 +92,6 @@ def parse_traffic(filenames):
                     stats['seed_columns'][seed].append({'name': col_name, 'size_bytes': len(col_value)})
         
         num_columns = len(data) if data else 1
-        print(data)
         item_size = sum(v['len'] if isinstance(v, dict) and 'len' in v else (v if isinstance(v, int) else len(v) if isinstance(v, str) else 0) for v in data.values())
         item_size = max(item_size / 1024, 1)
 
@@ -319,22 +318,21 @@ def create_base_sheet(ws, stats):
     ws[f'O{read_start+28}'] = f"=MAX(O{read_start}:O{read_start+23})"
     ws[f'P{read_start+28}'] = f"=MAX(P{read_start}:P{read_start+23})"
 
-    ws[f'N{read_start+29}'] = "预留小时数"
     # 预留比预置的转折点
     # 预置WCU每小时0.00065 * WCU * 小时数 * 365 / 12 = 3年预留WCU每小时0.000081 * WCU * 24 * 365 / 12 + 3年预付1.8 * WCU / 36个月
     # 0.00065*WCU*hour*365/12=0.000081*WCU*24*365/12+1.80*WCU/36 => 5.5197471022
-    hour = (PRICING['reserved_wcu_hour_3y']*24*365/12 + PRICING['reserved_upfront_wcu_100_3y']/36) / (PRICING['provisioned_wcu_hour'] * 365 / 12)
-
-    ws[f'O{read_start+29}'] = f"=ROUNDUP({hour})"
-    ws[f'P{read_start+29}'] = f"=ROUNDUP({hour})"
+    reserve_hour = (PRICING['reserved_wcu_hour_3y']*24*365/12 + PRICING['reserved_upfront_wcu_100_3y']/36) / (PRICING['provisioned_wcu_hour'] * 365 / 12)
+    ws[f'N{read_start+29}'] = "预留小时数"
+    ws[f'O{read_start+29}'] = f"=ROUNDUP({reserve_hour},0)"
+    ws[f'P{read_start+29}'] = f"=ROUNDUP({reserve_hour},0)"
 
     ws[f'N{read_start+30}'] = "预留RCU"
     ws[f'O{read_start+30}'] = f"=LARGE(O{read_start}:O{read_start+23},O{read_start+29})"
     ws[f'P{read_start+30}'] = f"=LARGE(P{read_start}:P{read_start+23},P{read_start+29})"
 
     ws[f'N{read_start+31}'] = "剩余预置RCU"
-    ws[f'O{read_start+31}'] = f"=SUMIF(O{read_start}:O{read_start+23},\">\"&O{read_start+30},O{read_start}:O{read_start+23})"
-    ws[f'P{read_start+31}'] = f"=SUMIF(P{read_start}:P{read_start+23},\">\"&P{read_start+30},P{read_start}:P{read_start+23})"
+    ws[f'O{read_start+31}'] = f"=SUMIF(O{read_start}:O{read_start+23},\">\"&O{read_start+30},O{read_start}:O{read_start+23})-O{read_start+30}*COUNTIF(O{read_start}:O{read_start+23},\">\"&O{read_start+30})"
+    ws[f'P{read_start+31}'] = f"=SUMIF(P{read_start}:P{read_start+23},\">\"&P{read_start+30},P{read_start}:P{read_start+23})-P{read_start+30}*COUNTIF(P{read_start}:P{read_start+23},\">\"&P{read_start+30})"
 
     rows['多列总RRU'] = f'$O${read_start+26}'
     rows['多行总RRU'] = f'$P${read_start+26}'
@@ -396,19 +394,19 @@ def create_calc_sheet(ws, rows):
     ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
     row += 1
 
+    stats_row = row + 1
     ws.append(['','多列点写','多列批写','多行模式'])
     ws.append(['数据量(GB)',f'=基础数据!{rows["数据量(GB)"]}',f'=基础数据!{rows["数据量(GB)"]}',f'=基础数据!{rows["数据量(GB)"]}'])
     ws.append(['总WRU',f'=基础数据!{rows["多列总WRU(点写)"]}',f'=基础数据!{rows["多列总WRU(批写)"]}',f'=基础数据!{rows["多行总WRU"]}'])
-    ws.append(['写入小时',f'=ROUNDUP(B{stats_row+1}/$E${stats_row+2}/3600,0)',f'=ROUNDUP(C{stats_row+1}/$E${stats_row+2}/3600,0)',f'=ROUNDUP(D{stats_row+1}/$E${stats_row+2}/3600,0)'])
-    ws.append(['预留WCU',f'=IF(B{row+3}>$G${base_row+2},$E${stats_row+2},0)',f'=IF(C{row+3}>$G${base_row+2},$E${stats_row+2},0)',f'=IF(D{row+3}>$G${base_row+2},$E${stats_row+2},0)'])
+    ws.append(['写入小时',f'=ROUNDUP(B{stats_row+1}/$E${base_row+2}/3600,0)',f'=ROUNDUP(C{stats_row+1}/$E${base_row+2}/3600,0)',f'=ROUNDUP(D{stats_row+1}/$E${base_row+2}/3600,0)'])
+    ws.append(['预留WCU',f'=IF(B{row+3}>$G${base_row+2},$E${base_row+2},0)',f'=IF(C{row+3}>$G${base_row+2},$E${base_row+2},0)',f'=IF(D{row+3}>$G${base_row+2},$E${base_row+2},0)'])
     ws.append(['总RRU',f'=基础数据!{rows["多列总RRU"]}',f'=基础数据!{rows["多列总RRU"]}',f'=基础数据!{rows["多行总RRU"]}'])
     ws.append(['总RCU',f'=基础数据!{rows["多列总RCU"]}',f'=基础数据!{rows["多列总RCU"]}',f'=基础数据!{rows["多行总RCU"]}'])
     ws.append(['最大RCU',f'=基础数据!{rows["多列最大RCU"]}',f'=基础数据!{rows["多列最大RCU"]}',f'=基础数据!{rows["多行最大RCU"]}'])
     ws.append(['预留RCU',f'=基础数据!{rows["多列预留RCU"]}',f'=基础数据!{rows["多列预留RCU"]}',f'=基础数据!{rows["多行预留RCU"]}'])
     ws.append(['剩余预置RCU',f'=基础数据!{rows["多列剩余预置RCU"]}',f'=基础数据!{rows["多列剩余预置RCU"]}',f'=基础数据!{rows["多行剩余预置RCU"]}'])
 
-    stats_row = row + 1
-    row += 10
+    row += 11
 
     # 费用汇总
     ws.merge_cells(f'A{row}:D{row}')
@@ -450,17 +448,10 @@ def create_calc_sheet(ws, rows):
     ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
     row += 1
 
-    provisioned_hour_row = row
-    ws[f'A{row}'] = "写入预置小时"
-    ws[f'B{row}'] = f"=ROUNDUP(B{stats_row+1}/B{stats_row+2}/3600,0)"
-    ws[f'C{row}'] = f"=ROUNDUP(C{stats_row+1}/C{stats_row+2}/3600,0)"
-    ws[f'D{row}'] = f"=ROUNDUP(D{stats_row+1}/D{stats_row+2}/3600,0)"
-    row += 1
-
     ws[f'A{row}'] = "写入预置费用"
-    ws[f'B{row}'] = f"=$C${base_row}*$E${stats_row+2}*B{stats_row+2}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row}*$E${stats_row+2}*C{stats_row+2}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row}*$E${stats_row+2}*D{stats_row+2}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row}*$E${base_row+2}*B{stats_row+2}*365/12"
+    ws[f'C{row}'] = f"=$C${base_row}*$E${base_row+2}*C{stats_row+2}*365/12"
+    ws[f'D{row}'] = f"=$C${base_row}*$E${base_row+2}*D{stats_row+2}*365/12"
     row += 1
 
     ws[f'A{row}'] = "读取预置费用"
@@ -497,21 +488,21 @@ def create_calc_sheet(ws, rows):
     row += 1
 
     ws[f'A{row}'] = "写入预置费用"
-    ws[f'B{row}'] = f"=$C${base_row}*($E${stats_row+2}-B{stats_row+3})*B{stats_row+2}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row}*($E${stats_row+2}-C{stats_row+3})*C{stats_row+2}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row}*($E${stats_row+2}-D{stats_row+3})*D{stats_row+2}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row}*($E${base_row+2}-B{stats_row+3})*B{stats_row+2}*365/12"
+    ws[f'C{row}'] = f"=$C${base_row}*($E${base_row+2}-C{stats_row+3})*C{stats_row+2}*365/12"
+    ws[f'D{row}'] = f"=$C${base_row}*($E${base_row+2}-D{stats_row+3})*D{stats_row+2}*365/12"
     row += 1
 
     ws[f'A{row}'] = "读取预留费用"
-    ws[f'B{row}'] = f"=$E${base_row+1}*B{stats_row+6}*24*365/12+$G${base_row+1}*B{stats_row+6}/36"
-    ws[f'C{row}'] = f"=$E${base_row+1}*C{stats_row+6}*24*365/12+$G${base_row+1}*C{stats_row+6}/36"
-    ws[f'D{row}'] = f"=$E${base_row+1}*D{stats_row+6}*24*365/12+$G${base_row+1}*D{stats_row+6}/36"
+    ws[f'B{row}'] = f"=$E${base_row+1}*B{stats_row+7}*24*365/12+$G${base_row+1}*B{stats_row+7}/36"
+    ws[f'C{row}'] = f"=$E${base_row+1}*C{stats_row+7}*24*365/12+$G${base_row+1}*C{stats_row+7}/36"
+    ws[f'D{row}'] = f"=$E${base_row+1}*D{stats_row+7}*24*365/12+$G${base_row+1}*D{stats_row+7}/36"
     row += 1
 
     ws[f'A{row}'] = "读取预置费用"
-    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+7}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+7}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+7}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+8}*365/12"
+    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+8}*365/12"
+    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+8}*365/12"
     row += 1
 
     ws[f'A{row}'] = "存储费用"
@@ -526,94 +517,6 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-5}:D{row-1})"
     row += 1
 
-    row += 1
-
-    ws[f'A{row}'] = "峰值WCU"
-    # ws[f'B{row}'] = f"=D{w_sum}"
-    peak_wcu = row
-    row += 1
-    ws[f'A{row}'] = "峰值WCU-小时/月"
-    ws[f'B{row}'] = f"=B{peak_wcu}*730"
-    peak_wcu_h = row
-    row += 1
-    
-    ws[f'A{row}'] = "按需写入费用"
-    ws[f'B{row}'] = f"=B{row-3}*{PRICING['on_demand_write']}/1000000"
-    od_w = row
-    row += 1
-    ws[f'A{row}'] = "预置写入费用"
-    ws[f'B{row}'] = f"=B{peak_wcu_h}*{PRICING['provisioned_wcu_hour']}"
-    pv_w = row
-    row += 1
-    ws[f'A{row}'] = "1年预留写入费用"
-    ws[f'B{row}'] = f"=B{peak_wcu_h}*{PRICING['reserved_wcu_hour_1y']}+ROUNDUP(B{peak_wcu}/100,0)*{PRICING['reserved_upfront_wcu_100_1y']}/12"
-    r1_w = row
-    row += 1
-    ws[f'A{row}'] = "3年预留写入费用"
-    ws[f'B{row}'] = f"=B{peak_wcu_h}*{PRICING['reserved_wcu_hour_3y']}+ROUNDUP(B{peak_wcu}/100,0)*{PRICING['reserved_upfront_wcu_100_3y']}/36"
-    r3_w = row
-    row += 2
-    
-    ws[f'A{row}'] = "总RCU消耗"
-    # ws[f'B{row}'] = f"={'H' if is_multirow else 'G'}{r_sum}"
-    row += 1
-    ws[f'A{row}'] = "峰值RCU"
-    # ws[f'B{row}'] = f"=D{r_sum}" + (f"*MAX(基础数据!F:F)" if is_multirow else "")
-    peak_rcu = row
-    row += 1
-    ws[f'A{row}'] = "峰值RCU-小时/月"
-    ws[f'B{row}'] = f"=B{peak_rcu}*730"
-    peak_rcu_h = row
-    row += 1
-    
-    ws[f'A{row}'] = "按需读取费用"
-    ws[f'B{row}'] = f"=B{row-3}*{PRICING['on_demand_read']}/1000000"
-    od_r = row
-    row += 1
-    ws[f'A{row}'] = "预置读取费用"
-    ws[f'B{row}'] = f"=B{peak_rcu_h}*{PRICING['provisioned_rcu_hour']}"
-    pv_r = row
-    row += 1
-    ws[f'A{row}'] = "1年预留读取费用"
-    ws[f'B{row}'] = f"=B{peak_rcu_h}*{PRICING['reserved_rcu_hour_1y']}+ROUNDUP(B{peak_rcu}/100,0)*{PRICING['reserved_upfront_rcu_100_1y']}/12"
-    r1_r = row
-    row += 1
-    ws[f'A{row}'] = "3年预留读取费用"
-    ws[f'B{row}'] = f"=B{peak_rcu_h}*{PRICING['reserved_rcu_hour_3y']}+ROUNDUP(B{peak_rcu}/100,0)*{PRICING['reserved_upfront_rcu_100_3y']}/36"
-    r3_r = row
-    row += 2
-    
-    ws[f'A{row}'] = "存储数据量(GB)"
-    # ws[f'B{row}'] = f"={'I' if is_multirow else 'H'}{w_sum}" + (f"*MAX(基础数据!F:F)" if is_multirow else "")
-    stor_size = row
-    row += 1
-    ws[f'A{row}'] = "存储费用"
-    ws[f'B{row}'] = f"=B{stor_size}*{PRICING['storage_gb_month']}"
-    stor_cost = row
-    row += 2
-    
-    # 总费用对比
-    ws.merge_cells(f'A{row}:E{row}')
-    ws[f'A{row}'] = "总费用对比"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
-    row += 1
-    
-    for i, h in enumerate(["模式", "写入", "读取", "存储", "总计"]):
-        ws.cell(row, i+1, h).fill = sf
-        ws.cell(row, i+1).font = st
-    row += 1
-    
-    for mode, w, r in [("按需", od_w, od_r), ("预置", pv_w, pv_r), ("1年预留", r1_w, r1_r), ("3年预留", r3_w, r3_r)]:
-        ws[f'A{row}'] = mode
-        ws[f'B{row}'] = f"=B{w}"
-        ws[f'C{row}'] = f"=B{r}"
-        ws[f'D{row}'] = f"=B{stor_cost}"
-        ws[f'E{row}'] = f"=B{row}+C{row}+D{row}"
-        if mode == "3年预留":
-            ws[f'E{row}'].font = Font(bold=True, color="FF0000")
-        row += 1
-    
     # 格式化
     for col in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']:
         ws.column_dimensions[col].width = 18
