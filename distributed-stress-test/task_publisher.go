@@ -37,6 +37,7 @@ type Task struct {
 	Times    int                    `json:"times,omitempty"`
 	Samples  int                    `json:"samples,omitempty"`
 	Duration int                    `json:"duration,omitempty"`
+	Repeat   int                    `json:"repeat,omitempty"`
 	Data     map[string]interface{} `json:"data,omitempty"`
 }
 
@@ -668,8 +669,13 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 						taskJSON, _ := json.Marshal(t)
 						var task Task
 						json.Unmarshal(taskJSON, &task)
-						log.Printf("Publishing parallel task: action=%s, qps=%d\n", task.Action, task.QPS)
-						publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+						if task.repeat == 0 {
+							task.repeat = 1
+						}
+						log.Printf("Publishing parallel task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
+						for i := 0; i < task.repeat; i++ {
+							publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+						}
 					}(subItem)
 				}
 				wg.Wait()
@@ -677,16 +683,26 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 				taskJSON, _ := json.Marshal(item)
 				var task Task
 				json.Unmarshal(taskJSON, &task)
-				log.Printf("Publishing list task: action=%s, qps=%d\n", task.Action, task.QPS)
-				publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+				if task.repeat == 0 {
+					task.repeat = 1
+				}
+				log.Printf("Publishing list task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
+				for i := 0; i < task.repeat; i++ {
+					publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+				}
 			}
 		}
 	case map[string]interface{}:
 		taskJSON, _ := json.Marshal(v)
 		var task Task
 		json.Unmarshal(taskJSON, &task)
-		log.Printf("Publishing task: action=%s, qps=%d\n", task.Action, task.QPS)
-		publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+		if task.repeat == 0 {
+			task.repeat = 1
+		}
+		log.Printf("Publishing task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
+		for i := 0; i < task.repeat; i++ {
+			publishTask(ctx, rdb, prefix, threads, task, stats, debug)
+		}
 	}
 }
 
