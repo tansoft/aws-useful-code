@@ -145,6 +145,82 @@ task_publisher.go 根据traffic.json定义，进行流量精确控制，把任�
 
 ## 快速开始
 
+### 建表
+
+#### 标准模式（多列）建表语句参考
+
+```bash
+# 基础版本（按需计费）
+bash
+aws dynamodb create-table \
+  --table-name multicolumn-street-test \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --tags Key=Cost-Center,Value=stress-test \
+  --billing-mode PAY_PER_REQUEST
+
+# 预置模式请参考
+  --billing-mode PROVISIONED \
+  --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1500
+```
+
+#### 带SortKey（多行）建表语句参考
+
+```bash
+# 基础版本（按需计费）
+bash
+aws dynamodb create-table \
+  --table-name multirow-street-test \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+      AttributeName=sk,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+      AttributeName=sk,KeyType=RANGE \
+  --tags Key=Cost-Center,Value=stress-test \
+  --billing-mode PAY_PER_REQUEST
+
+# 预置模式请参考
+  --billing-mode PROVISIONED \
+  --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1500
+```
+
+### 配置读容量自动扩展（可选）
+
+```bash
+# 读请求配置
+aws application-autoscaling register-scalable-target \
+  --service-namespace dynamodb \
+  --resource-id table/stress-test \
+  --scalable-dimension dynamodb:table:ReadCapacityUnits \
+  --min-capacity 100 \
+  --max-capacity 10000
+
+aws application-autoscaling put-scaling-policy \
+  --service-namespace dynamodb \
+  --resource-id table/stress-test \
+  --scalable-dimension dynamodb:table:ReadCapacityUnits \
+  --policy-name stress-test-read-scaling \
+  --policy-type TargetTrackingScaling \
+  --target-tracking-scaling-policy-configuration \
+    '{"TargetValue":70.0,"PredefinedMetricSpecification":{"PredefinedMetricType":"DynamoDBReadCapacityUtilization"}}'
+
+# 写请求配置
+aws application-autoscaling register-scalable-target \
+  --service-namespace dynamodb \
+  --resource-id table/stress-test \
+  --scalable-dimension dynamodb:table:WriteCapacityUnits \
+  --min-capacity 100 \
+  --max-capacity 5000
+
+aws application-autoscaling put-scaling-policy \
+  --service-namespace dynamodb \
+  --resource-id table/stress-test \
+  --scalable-dimension dynamodb:table:WriteCapacityUnits \
+  --policy-name stress-test-write-scaling \
+  --policy-type TargetTrackingScaling \
+  --target-tracking-scaling-policy-configuration \
+    '{"TargetValue":70.0,"PredefinedMetricSpecification":{"PredefinedMetricType":"DynamoDBWriteCapacityUtilization"}}'
+```
+
 ### 编译
 
 ```bash
@@ -184,6 +260,10 @@ nohup ./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amaz
 
 # Monitor worker stats only
 ./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -manage monitor
+
+# restart or stop worker
+./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -manage restart
+./task_publisher -tls -redis street-ctrl-xxxxxx.serverless.use1.cache.amazonaws.com:6379 -prefix dst -config config.json -manage stop
 ```
 
 **参数说明：**
@@ -299,19 +379,20 @@ Worker:
   "qps": 2,
   "times": 2,
   "data": {
-    "randomkey_": {"r": 16, "len": 10},
-    "sthkey": 5
+      "randomkey_": {"r": 16, "len": 10},
+      "sthkey": 10,
+      "sthkey2": 5
   }
 }
 ```
 
 ```bash
-2026/02/18 02:46:09 Publishing list task: action=putItem, qps=2
-dst_q0 {"action":"putItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":10,"sthkey":5}}
-dst_q1 {"action":"putItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_15":10,"sthkey":5}}
+2026/02/21 07:49:58 Publishing list task: action=putItem, qps=2, repeat=1
+dst_q0 {"action":"putItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":10,"sthkey":10,"sthkey2":5}}
+dst_q1 {"action":"putItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_15":10,"sthkey":10,"sthkey2":5}}
 
-2026/02/18 02:46:09 [DEBUG] putItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:10 sthkey:5]
-2026/02/18 02:46:09 [DEBUG] putItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_15:10 sthkey:5]
+2026/02/21 07:49:58 [DEBUG] putItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:10 sthkey:10 sthkey2:5]
+2026/02/21 07:49:58 [DEBUG] putItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_15:10 sthkey:10 sthkey2:5]
 ```
 
 * 步骤二：更新2条数据，使用一个固定的sample（randomkey_1）
@@ -331,12 +412,12 @@ dst_q1 {"action":"putItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"ran
 ```
 
 ```bash
-2026/02/18 02:46:10 Publishing list task: action=updateItem, qps=2
-dst_q0 {"data":{"sthkey":5,"randomkey_1":5},"action":"updateItem","key":"52fdfc072182654f163f5f0f9a621d72"}
-dst_q1 {"data":{"sthkey":5,"randomkey_1":5},"action":"updateItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
+2026/02/21 07:49:59 Publishing list task: action=updateItem, qps=2, repeat=1
+dst_q0 {"action":"updateItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5}}
+dst_q1 {"action":"updateItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_1":5,"sthkey":5}}
 
-2026/02/18 02:46:10 [DEBUG] updateItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_1:5 sthkey:5]
-2026/02/18 02:46:10 [DEBUG] updateItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:5 sthkey:5]
+2026/02/21 07:49:59 [DEBUG] updateItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:5 sthkey:5]
+2026/02/21 07:49:59 [DEBUG] updateItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_1:5 sthkey:5]
 ```
 
 * 步骤三：使用相同的随机种子获取这两个key内容，可以看到前面putItem的randomkey_15依然存在，randomkey_1已覆盖，长度已经更新为5
@@ -351,14 +432,14 @@ dst_q1 {"data":{"sthkey":5,"randomkey_1":5},"action":"updateItem","key":"9566c74
 ```
 
 ```bash
-2026/02/18 02:46:11 Publishing list task: action=getItem, qps=2
+2026/02/21 07:50:00 Publishing list task: action=getItem, qps=2, repeat=1
 dst_q0 {"action":"getItem","key":"52fdfc072182654f163f5f0f9a621d72"}
 dst_q1 {"action":"getItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
 
-2026/02/18 02:46:11 [DEBUG] getItem key=9566c74d10037c4d7bbb0407d1e2c649
-2026/02/18 02:46:11 [DEBUG] getItem key=52fdfc072182654f163f5f0f9a621d72
-2026/02/18 02:46:11 [DEBUG] getItem result=map[randomkey_1:[0 62 38 31 197] randomkey_15:[54 36 36 215 175 235 134 94 203 80] sthkey:[102 225 182 195 78]]
-2026/02/18 02:46:11 [DEBUG] getItem result=map[randomkey_1:[181 1 154 168 126] sthkey:[219 61 127 34 106]]
+2026/02/21 07:50:00 [DEBUG] getItem key=9566c74d10037c4d7bbb0407d1e2c649
+2026/02/21 07:50:00 [DEBUG] getItem key=52fdfc072182654f163f5f0f9a621d72
+2026/02/21 07:50:00 [DEBUG] getItem result=map[randomkey_1:[83 138 128 96 224] sthkey:[35 188 74 85 156] sthkey2:[37 133 64 30 12]]
+2026/02/21 07:50:00 [DEBUG] getItem result=map[randomkey_1:[60 173 81 151 125] randomkey_15:[137 42 36 76 81 183 168 208 86 104] sthkey:[236 138 33 4 119] sthkey2:[189 169 1 110 218]]
 ```
 
 * 步骤四：使用相同的随机种子获取这两个key的子键内容，value配置生成的键值（randomkey_1和randomkey_15），可以得到对应的列值
@@ -377,14 +458,14 @@ dst_q1 {"action":"getItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
 ```
 
 ```bash
-2026/02/18 02:46:12 Publishing list task: action=getSubItem, qps=2
-dst_q0 {"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"sthkey":5,"randomkey_1":5}}
-dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"sthkey":5,"randomkey_15":5}}
+2026/02/21 07:50:01 Publishing list task: action=getSubItem, qps=2, repeat=1
+dst_q0 {"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5}}
+dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_15":5,"sthkey":5}}
 
-2026/02/18 02:46:12 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[sthkey randomkey_15]
-2026/02/18 02:46:12 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[sthkey randomkey_1]
-2026/02/18 02:46:13 [DEBUG] getSubItem result=map[randomkey_1:[181 1 154 168 126] sthkey:[219 61 127 34 106]]
-2026/02/18 02:46:13 [DEBUG] getSubItem result=map[randomkey_15:[54 36 36 215 175 235 134 94 203 80] sthkey:[102 225 182 195 78]]
+2026/02/21 07:50:01 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1 sthkey]
+2026/02/21 07:50:01 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_15 sthkey]
+2026/02/21 07:50:01 [DEBUG] getSubItem result=map[randomkey_1:[83 138 128 96 224] sthkey:[35 188 74 85 156]]
+2026/02/21 07:50:01 [DEBUG] getSubItem result=map[randomkey_15:[137 42 36 76 81 183 168 208 86 104] sthkey:[236 138 33 4 119]]
 ```
 
 * 步骤五：使用相同的随机种子获取这两个key的子键内容，使用一个固定的sample（randomkey_1），获取对应列值成功
@@ -403,19 +484,19 @@ dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"
 ```
 
 ```bash
-2026/02/18 02:46:13 Publishing list task: action=getSubItem, qps=2
+2026/02/21 07:50:02 Publishing list task: action=getSubItem, qps=2, repeat=1
 dst_q0 {"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5}}
 dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_1":5}}
 
-2026/02/18 02:46:13 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1]
-2026/02/18 02:46:13 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_1]
-2026/02/18 02:46:13 [DEBUG] getSubItem result=map[randomkey_1:[0 62 38 31 197]]
-2026/02/18 02:46:13 [DEBUG] getSubItem result=map[randomkey_1:[181 1 154 168 126]]
+2026/02/21 07:50:02 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1]
+2026/02/21 07:50:02 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_1]
+2026/02/21 07:50:02 [DEBUG] getSubItem result=map[randomkey_1:[83 138 128 96 224]]
+2026/02/21 07:50:02 [DEBUG] getSubItem result=map[randomkey_1:[60 173 81 151 125]]
 ```
 
 ### 批写-批读
 
-* 步骤六：使用相同的随机种子批量写入内容，可见key和列名，都和步骤一的putItem一致，并新写入了两条数据。
+* 步骤六：使用相同的随机种子批量写入内容，可见key和列名，都和步骤一的putItem一致，并新写入了两条数据。注意：基于多列特性考虑，这里写入并不会覆盖key对应的其他列的数据。
 
 ```json
 {
@@ -431,15 +512,15 @@ dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"
 ```
 
 ```bash
-2026/02/18 06:58:52 Publishing list task: action=batchPutItem, qps=2
+2026/02/21 07:50:03 Publishing list task: action=batchPutItem, qps=2, repeat=1
 dst_q0 {"action":"batchPutItem","items":{"52fdfc072182654f163f5f0f9a621d72":{"randomkey_1":2},"9566c74d10037c4d7bbb0407d1e2c649":{"randomkey_15":2}}}
 dst_q1 {"action":"batchPutItem","items":{"81855ad8681d0d86d1e91e00167939cb":{"randomkey_7":2},"6694d2c422acd208a0072939487f6999":{"randomkey_11":2}}}
 
-2026/02/18 06:58:52 [DEBUG] batchPutItem items=map[52fdfc072182654f163f5f0f9a621d72:map[randomkey_1:2] 9566c74d10037c4d7bbb0407d1e2c649:map[randomkey_15:2]]
-2026/02/18 06:58:52 [DEBUG] batchPutItem items=map[6694d2c422acd208a0072939487f6999:map[randomkey_11:2] 81855ad8681d0d86d1e91e00167939cb:map[randomkey_7:2]]
+2026/02/21 07:50:03 [DEBUG] batchPutItem items=map[6694d2c422acd208a0072939487f6999:map[randomkey_11:2] 81855ad8681d0d86d1e91e00167939cb:map[randomkey_7:2]]
+2026/02/21 07:50:03 [DEBUG] batchPutItem items=map[52fdfc072182654f163f5f0f9a621d72:map[randomkey_1:2] 9566c74d10037c4d7bbb0407d1e2c649:map[randomkey_15:2]]
 ```
 
-* 步骤七：使用相同的随机种子批量读取内容，可见key和列名，内容都和步骤三的getItem一致，步骤六新写的两条数据也能正确读取，对应键值长度也更新为2。
+* 步骤七：使用相同的随机种子批量读取内容，可见key和列名，内容都和步骤三的getItem一致，步骤六新写的两条数据也能正确读取，对应键值长度也更新为2。可见之前写入的其他列的数据还在。
 
 ```json
 {
@@ -452,14 +533,14 @@ dst_q1 {"action":"batchPutItem","items":{"81855ad8681d0d86d1e91e00167939cb":{"ra
 ```
 
 ```bash
-2026/02/18 06:58:53 Publishing list task: action=batchGetItem, qps=2
+2026/02/21 07:50:04 Publishing list task: action=batchGetItem, qps=2, repeat=1
 dst_q0 {"action":"batchGetItem","items":["52fdfc072182654f163f5f0f9a621d72","9566c74d10037c4d7bbb0407d1e2c649"]}
 dst_q1 {"action":"batchGetItem","items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"]}
 
-2026/02/18 06:58:53 [DEBUG] batchGetItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999]
-2026/02/18 06:58:53 [DEBUG] batchGetItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649]
-2026/02/18 06:58:53 [DEBUG] batchGetItem result=[map[randomkey_7:[138 74]] map[randomkey_11:[66 58]]]
-2026/02/18 06:58:53 [DEBUG] batchGetItem result=[map[randomkey_1:[61 59] sthkey:[159 97 125 224 246]] map[randomkey_1:[159 136 34 42 150] randomkey_15:[50 42] sthkey:[32 79 38 245 222]]]
+2026/02/21 07:50:04 [DEBUG] batchGetItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649]
+2026/02/21 07:50:04 [DEBUG] batchGetItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999]
+2026/02/21 07:50:04 [DEBUG] batchGetItem result=[map[randomkey_1:[45 138] sthkey:[35 188 74 85 156] sthkey2:[37 133 64 30 12]] map[randomkey_1:[60 173 81 151 125] randomkey_15:[44 70] sthkey:[236 138 33 4 119] sthkey2:[189 169 1 110 218]]]
+2026/02/21 07:50:04 [DEBUG] batchGetItem result=[map[randomkey_7:[180 196]] map[randomkey_11:[145 254]]]
 ```
 
 * 步骤八：使用相同的随机种子批量读取内容，可见key和列名，内容都和步骤三的getItem一致，且列名已经进行了混合。
@@ -478,14 +559,14 @@ dst_q1 {"action":"batchGetItem","items":["81855ad8681d0d86d1e91e00167939cb","669
 ```
 
 ```bash
-2026/02/18 07:15:45 Publishing list task: action=batchGetSubItem, qps=2
-dst_q0 {"items":["52fdfc072182654f163f5f0f9a621d72","9566c74d10037c4d7bbb0407d1e2c649"],"data":{"randomkey_1":2,"randomkey_15":2},"action":"batchGetSubItem"}
-dst_q1 {"items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"],"data":{"randomkey_7":2,"randomkey_11":2},"action":"batchGetSubItem"}
+2026/02/21 07:50:05 Publishing list task: action=batchGetSubItem, qps=2, repeat=1
+dst_q0 {"action":"batchGetSubItem","items":["52fdfc072182654f163f5f0f9a621d72","9566c74d10037c4d7bbb0407d1e2c649"],"data":{"randomkey_1":2,"randomkey_15":2}}
+dst_q1 {"action":"batchGetSubItem","items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"],"data":{"randomkey_7":2,"randomkey_11":2}}
 
-2026/02/18 07:15:45 [DEBUG] batchGetSubItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999] columns=[randomkey_11 randomkey_7]
-2026/02/18 07:15:45 [DEBUG] batchGetSubItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649] columns=[randomkey_1 randomkey_15]
-2026/02/18 07:15:45 [DEBUG] batchGetSubItem result=[map[randomkey_7:[202 150]] map[randomkey_11:[253 56]]]
-2026/02/18 07:15:45 [DEBUG] batchGetSubItem result=[map[randomkey_1:[201 89]] map[randomkey_1:[150 214 96 97 103] randomkey_15:[179 219]]]
+2026/02/21 07:50:05 [DEBUG] batchGetSubItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999] columns=[randomkey_7 randomkey_11]
+2026/02/21 07:50:05 [DEBUG] batchGetSubItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649] columns=[randomkey_1 randomkey_15]
+2026/02/21 07:50:05 [DEBUG] batchGetSubItem result=[map[randomkey_1:[45 138]] map[randomkey_1:[60 173 81 151 125] randomkey_15:[44 70]]]
+2026/02/21 07:50:05 [DEBUG] batchGetSubItem result=[map[randomkey_7:[180 196]] map[randomkey_11:[145 254]]]
 ```
 
 * 步骤九：使用相同的随机种子选择这两个key内容，进行删除，所有测试内容已经清空
@@ -500,95 +581,100 @@ dst_q1 {"items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487
 ```
 
 ```bash
-2026/02/18 07:32:38 Publishing list task: action=deleteItem, qps=2
+2026/02/21 07:50:06 Publishing list task: action=deleteItem, qps=2, repeat=1
 dst_q0 {"action":"deleteItem","key":"52fdfc072182654f163f5f0f9a621d72"}
 dst_q1 {"action":"deleteItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
 dst_q2 {"action":"deleteItem","key":"81855ad8681d0d86d1e91e00167939cb"}
 dst_q3 {"action":"deleteItem","key":"6694d2c422acd208a0072939487f6999"}
 
-2026/02/18 07:32:38 [DEBUG] deleteItem key=9566c74d10037c4d7bbb0407d1e2c649
-2026/02/18 07:32:38 [DEBUG] deleteItem key=81855ad8681d0d86d1e91e00167939cb
-2026/02/18 07:32:38 [DEBUG] deleteItem key=6694d2c422acd208a0072939487f6999
-2026/02/18 07:32:38 [DEBUG] deleteItem key=52fdfc072182654f163f5f0f9a621d72
+2026/02/21 07:50:06 [DEBUG] deleteItem key=52fdfc072182654f163f5f0f9a621d72
+2026/02/21 07:50:06 [DEBUG] deleteItem key=6694d2c422acd208a0072939487f6999
+2026/02/21 07:50:06 [DEBUG] deleteItem key=9566c74d10037c4d7bbb0407d1e2c649
+2026/02/21 07:50:06 [DEBUG] deleteItem key=81855ad8681d0d86d1e91e00167939cb
 ```
 
 以下使用 DynamoDB 多列例子进行测试
 
 ```bash
-2026/02/18 07:35:03 Publishing list task: action=putItem, qps=2
-dst_q0 {"action":"putItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":10,"sthkey":5}}
-dst_q1 {"action":"putItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"sthkey":5,"randomkey_15":10}}
+2026/02/21 08:12:28 Publishing list task: action=putItem, qps=2, repeat=1
+dst_q0 {"key":"52fdfc072182654f163f5f0f9a621d72","data":{"sthkey2":5,"randomkey_1":10,"sthkey":10},"action":"putItem"}
+dst_q1 {"key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_15":10,"sthkey":10,"sthkey2":5},"action":"putItem"}
 
-2026/02/18 07:35:03 [DEBUG] putItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:10 sthkey:5]
-2026/02/18 07:35:03 [DEBUG] putItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_15:10 sthkey:5]
+2026/02/21 08:12:28 [DEBUG] putItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:10 sthkey:10 sthkey2:5]
+2026/02/21 08:12:28 [DEBUG] putItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_15:10 sthkey:10 sthkey2:5]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:04 Publishing list task: action=updateItem, qps=2
-dst_q0 {"action":"updateItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5}}
-dst_q1 {"action":"updateItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_1":5,"sthkey":5}}
+2026/02/21 08:12:29 Publishing list task: action=updateItem, qps=2, repeat=1
+dst_q0 {"key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5},"action":"updateItem"}
+dst_q1 {"key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_1":5,"sthkey":5},"action":"updateItem"}
 
-2026/02/18 07:35:04 [DEBUG] updateItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_1:5 sthkey:5]
-2026/02/18 07:35:04 [DEBUG] updateItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:5 sthkey:5]
+2026/02/21 08:12:29 [DEBUG] updateItem key=52fdfc072182654f163f5f0f9a621d72 data=map[randomkey_1:5 sthkey:5]
+2026/02/21 08:12:29 [DEBUG] updateItem key=9566c74d10037c4d7bbb0407d1e2c649 data=map[randomkey_1:5 sthkey:5]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:05 Publishing list task: action=getItem, qps=2
+2026/02/21 08:12:30 Publishing list task: action=getItem, qps=2, repeat=1
 dst_q0 {"action":"getItem","key":"52fdfc072182654f163f5f0f9a621d72"}
 dst_q1 {"action":"getItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
 
-2026/02/18 07:35:05 [DEBUG] getItem key=52fdfc072182654f163f5f0f9a621d72
-2026/02/18 07:35:05 [DEBUG] getItem key=9566c74d10037c4d7bbb0407d1e2c649
-2026/02/18 07:35:05 [DEBUG] getItem result=map[randomkey_1:[178 186 74 100 11] randomkey_15:[88 52 70 62 108 247 108 233 147 239] sthkey:[177 25 123 208 67]]
-2026/02/18 07:35:05 [DEBUG] getItem result=map[randomkey_1:[52 78 204 234 246] sthkey:[239 203 62 196 214]]
+2026/02/21 08:12:30 [DEBUG] getItem key=52fdfc072182654f163f5f0f9a621d72
+2026/02/21 08:12:30 [DEBUG] getItem key=9566c74d10037c4d7bbb0407d1e2c649
+2026/02/21 08:12:30 [DEBUG] getItem result=map[id:52fdfc072182654f163f5f0f9a621d72 randomkey_1:[13 234 222 69 205] sthkey:[54 67 236 121 124] sthkey2:[158 216 235 131 158]]
+2026/02/21 08:12:30 [DEBUG] getItem result=map[id:9566c74d10037c4d7bbb0407d1e2c649 randomkey_1:[194 32 42 140 138] randomkey_15:[82 185 35 108 63 30 48 63 97 19] sthkey:[116 189 13 201 53] sthkey2:[216 196 141 241 185]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:06 Publishing list task: action=getSubItem, qps=2
-dst_q0 {"key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5},"action":"getSubItem"}
-dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_15":5,"sthkey":5}}
+2026/02/21 08:12:31 Publishing list task: action=getSubItem, qps=2, repeat=1
+dst_q0 {"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5,"sthkey":5}}
+dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"sthkey":5,"randomkey_15":5}}
 
-2026/02/18 07:35:06 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_15 sthkey]
-2026/02/18 07:35:06 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1 sthkey]
-2026/02/18 07:35:06 [DEBUG] getSubItem result=map[randomkey_1:[52 78 204 234 246] sthkey:[239 203 62 196 214]]
-2026/02/18 07:35:06 [DEBUG] getSubItem result=map[randomkey_15:[88 52 70 62 108 247 108 233 147 239] sthkey:[177 25 123 208 67]]
+2026/02/21 08:12:31 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1 sthkey]
+2026/02/21 08:12:31 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[sthkey randomkey_15]
+2026/02/21 08:12:31 [DEBUG] getSubItem result=map[randomkey_1:[13 234 222 69 205] sthkey:[54 67 236 121 124]]
+2026/02/21 08:12:31 [DEBUG] getSubItem result=map[randomkey_15:[82 185 35 108 63 30 48 63 97 19] sthkey:[116 189 13 201 53]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:07 Publishing list task: action=getSubItem, qps=2
-dst_q0 {"data":{"randomkey_1":5},"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72"}
-dst_q1 {"data":{"randomkey_1":5},"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
+2026/02/21 08:12:32 Publishing list task: action=getSubItem, qps=2, repeat=1
+dst_q0 {"action":"getSubItem","key":"52fdfc072182654f163f5f0f9a621d72","data":{"randomkey_1":5}}
+dst_q1 {"action":"getSubItem","key":"9566c74d10037c4d7bbb0407d1e2c649","data":{"randomkey_1":5}}
 
-2026/02/18 07:35:07 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_1]
-2026/02/18 07:35:07 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1]
-2026/02/18 07:35:07 [DEBUG] getSubItem result=map[randomkey_1:[52 78 204 234 246]]
-2026/02/18 07:35:07 [DEBUG] getSubItem result=map[randomkey_1:[178 186 74 100 11]]
+2026/02/21 08:12:32 [DEBUG] getSubItem key=9566c74d10037c4d7bbb0407d1e2c649 columns=[randomkey_1]
+2026/02/21 08:12:32 [DEBUG] getSubItem key=52fdfc072182654f163f5f0f9a621d72 columns=[randomkey_1]
+2026/02/21 08:12:32 [DEBUG] getSubItem result=map[randomkey_1:[194 32 42 140 138]]
+2026/02/21 08:12:32 [DEBUG] getSubItem result=map[randomkey_1:[13 234 222 69 205]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:08 Publishing list task: action=batchPutItem, qps=2
-dst_q0 {"action":"batchPutItem","items":{"52fdfc072182654f163f5f0f9a621d72":{"randomkey_1":2},"9566c74d10037c4d7bbb0407d1e2c649":{"randomkey_15":2}}}
+# 多列模式，batchPutItem会把多余的字段覆盖掉了
+2026/02/21 08:12:33 Publishing list task: action=batchPutItem, qps=2, repeat=1
+dst_q0 {"action":"batchPutItem","items":{"9566c74d10037c4d7bbb0407d1e2c649":{"randomkey_15":2},"52fdfc072182654f163f5f0f9a621d72":{"randomkey_1":2}}}
 dst_q1 {"action":"batchPutItem","items":{"81855ad8681d0d86d1e91e00167939cb":{"randomkey_7":2},"6694d2c422acd208a0072939487f6999":{"randomkey_11":2}}}
 
-2026/02/18 07:35:08 [DEBUG] batchPutItem items=map[6694d2c422acd208a0072939487f6999:map[randomkey_11:2] 81855ad8681d0d86d1e91e00167939cb:map[randomkey_7:2]]
-2026/02/18 07:35:08 [DEBUG] batchPutItem items=map[52fdfc072182654f163f5f0f9a621d72:map[randomkey_1:2] 9566c74d10037c4d7bbb0407d1e2c649:map[randomkey_15:2]]
+2026/02/21 08:12:33 [DEBUG] batchPutItem items=map[6694d2c422acd208a0072939487f6999:map[randomkey_11:2] 81855ad8681d0d86d1e91e00167939cb:map[randomkey_7:2]]
+2026/02/21 08:12:33 [DEBUG] batchPutItem items=map[52fdfc072182654f163f5f0f9a621d72:map[randomkey_1:2] 9566c74d10037c4d7bbb0407d1e2c649:map[randomkey_15:2]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:09 Publishing list task: action=batchGetItem, qps=2
+# 可见读取只有写入的两个字段了
+2026/02/21 08:12:34 Publishing list task: action=batchGetItem, qps=2, repeat=1
 dst_q0 {"action":"batchGetItem","items":["52fdfc072182654f163f5f0f9a621d72","9566c74d10037c4d7bbb0407d1e2c649"]}
 dst_q1 {"action":"batchGetItem","items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"]}
 
-2026/02/18 07:35:09 [DEBUG] batchGetItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999]
-2026/02/18 07:35:09 [DEBUG] batchGetItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649]
-2026/02/18 07:35:09 [DEBUG] batchGetItem result=[map[randomkey_7:[193 115]] map[randomkey_11:[147 224]]]
-2026/02/18 07:35:09 [DEBUG] batchGetItem result=[map[randomkey_1:[243 119] sthkey:[239 203 62 196 214]] map[randomkey_1:[178 186 74 100 11] randomkey_15:[79 106] sthkey:[177 25 123 208 67]]]
+2026/02/21 08:12:34 [DEBUG] batchGetItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999]
+2026/02/21 08:12:34 [DEBUG] batchGetItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649]
+2026/02/21 08:12:34 [DEBUG] batchGetItem result=[map[id:9566c74d10037c4d7bbb0407d1e2c649 randomkey_15:[150 96]] map[id:52fdfc072182654f163f5f0f9a621d72 randomkey_1:[232 64]]]
+2026/02/21 08:12:34 [DEBUG] batchGetItem result=[map[id:6694d2c422acd208a0072939487f6999 randomkey_11:[111 224]] map[id:81855ad8681d0d86d1e91e00167939cb randomkey_7:[152 171]]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:10 Publishing list task: action=batchGetSubItem, qps=2
+# 子item读取也是正确的
+2026/02/21 08:12:35 Publishing list task: action=batchGetSubItem, qps=2, repeat=1
 dst_q0 {"action":"batchGetSubItem","items":["52fdfc072182654f163f5f0f9a621d72","9566c74d10037c4d7bbb0407d1e2c649"],"data":{"randomkey_1":2,"randomkey_15":2}}
-dst_q1 {"action":"batchGetSubItem","items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"],"data":{"randomkey_7":2,"randomkey_11":2}}
+dst_q1 {"items":["81855ad8681d0d86d1e91e00167939cb","6694d2c422acd208a0072939487f6999"],"data":{"randomkey_7":2,"randomkey_11":2},"action":"batchGetSubItem"}
 
-2026/02/18 07:35:10 [DEBUG] batchGetSubItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999] columns=[randomkey_7 randomkey_11]
-2026/02/18 07:35:10 [DEBUG] batchGetSubItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649] columns=[randomkey_1 randomkey_15]
-2026/02/18 07:35:10 [DEBUG] batchGetSubItem result=[map[randomkey_7:[193 115]] map[randomkey_11:[147 224]]]
-2026/02/18 07:35:10 [DEBUG] batchGetSubItem result=[map[randomkey_1:[243 119]] map[randomkey_1:[178 186 74 100 11] randomkey_15:[79 106]]]
+2026/02/21 08:12:35 [DEBUG] batchGetSubItem keys=[81855ad8681d0d86d1e91e00167939cb 6694d2c422acd208a0072939487f6999] columns=[randomkey_11 randomkey_7]
+2026/02/21 08:12:35 [DEBUG] batchGetSubItem keys=[52fdfc072182654f163f5f0f9a621d72 9566c74d10037c4d7bbb0407d1e2c649] columns=[randomkey_1 randomkey_15]
+2026/02/21 08:12:35 [DEBUG] batchGetSubItem result=[map[randomkey_11:[111 224]] map[randomkey_7:[152 171]]]
+2026/02/21 08:12:35 [DEBUG] batchGetSubItem result=[map[randomkey_15:[150 96]] map[randomkey_1:[232 64]]]
 -----------------------------------------------------------------------------------------------------------
-2026/02/18 07:35:11 Publishing list task: action=deleteItem, qps=2
+2026/02/21 08:12:36 Publishing list task: action=deleteItem, qps=2, repeat=1
 dst_q0 {"action":"deleteItem","key":"52fdfc072182654f163f5f0f9a621d72"}
 dst_q1 {"action":"deleteItem","key":"9566c74d10037c4d7bbb0407d1e2c649"}
-dst_q2 {"key":"81855ad8681d0d86d1e91e00167939cb","action":"deleteItem"}
-dst_q3 {"key":"6694d2c422acd208a0072939487f6999","action":"deleteItem"}
+dst_q2 {"action":"deleteItem","key":"81855ad8681d0d86d1e91e00167939cb"}
+dst_q3 {"action":"deleteItem","key":"6694d2c422acd208a0072939487f6999"}
 
-2026/02/18 07:35:11 [DEBUG] deleteItem key=81855ad8681d0d86d1e91e00167939cb
-2026/02/18 07:35:11 [DEBUG] deleteItem key=6694d2c422acd208a0072939487f6999
-2026/02/18 07:35:11 [DEBUG] deleteItem key=52fdfc072182654f163f5f0f9a621d72
-2026/02/18 07:35:11 [DEBUG] deleteItem key=9566c74d10037c4d7bbb0407d1e2c649
+2026/02/21 08:12:37 [DEBUG] deleteItem key=52fdfc072182654f163f5f0f9a621d72
+2026/02/21 08:12:37 [DEBUG] deleteItem key=9566c74d10037c4d7bbb0407d1e2c649
+2026/02/21 08:12:37 [DEBUG] deleteItem key=81855ad8681d0d86d1e91e00167939cb
+2026/02/21 08:12:37 [DEBUG] deleteItem key=6694d2c422acd208a0072939487f6999
 ```
+
+以下使用 Redis 多列例子进行测试

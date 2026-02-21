@@ -6,11 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+	"runtime/pprof"
 
 	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
@@ -272,22 +275,30 @@ func (w *Worker) startWorker(ctx context.Context, threadID int, wg *sync.WaitGro
 	}
 }
 
-func (w *Worker) handleNotify(ctx context.Context) {
+func (w *Worker) handleNotify(ctx context.Context, cancel context.CancelFunc) {
 	pubsub := w.rdb.Subscribe(ctx, w.prefix+"_notify")
 	defer pubsub.Close()
 
 	for msg := range pubsub.Channel() {
 		switch msg.Payload {
 		case "update_config":
-			cfgData, _ := w.rdb.Get(ctx, w.prefix+"_cfg").Result()
-			sonic.UnmarshalString(cfgData, &w.config)
-			log.Println("Config updated")
+			log.Println("Received update_config, restarting worker...")
+			cmd := exec.Command(os.Args[0], os.Args[1:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Start()
+			cancel()
+			return
+		case "stop":
+			log.Println("Received stop, quit worker...")
+			cancel()
+			return
 		case "execute_bash":
 			// Execute bash command (implement as needed)
 		case "reboot_instance":
 			exec.Command("sudo", "reboot").Run()
 		case "terminate_instance":
-			// Implement instance termination
+			syscall.Kill(os.Getpid(), syscall.SIGTERM)
 		}
 	}
 }
@@ -338,11 +349,9 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 			statsJSON, _ := sonic.MarshalString(statsData)
 			rdb.Publish(ctx, prefix+"_stats", statsJSON)
 			
-			if debug {
-				log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d BG:%d BGS:%d BP:%d E:%d T:%d Q:%d%v",
-					elapsed.Round(time.Second),
-					put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, total, totalQueued, queueLengths)
-			}
+			log.Printf("T:%s P:%d U:%d G:%d GS:%d D:%d BG:%d BGS:%d BP:%d E:%d T:%d Q:%d%v",
+				elapsed.Round(time.Second),
+				put, update, get, getSub, del, batchGet, batchGetSub, batchPut, errors, total, totalQueued, queueLengths)
 		}
 	}
 }
@@ -354,6 +363,7 @@ func main() {
 	useTLS := flag.Bool("tls", false, "Use TLS for Redis connection")
 	enableStats := flag.Bool("stats", false, "Enable stats monitoring")
 	debug := flag.Bool("debug", false, "Enable debug logging")
+	prof := flag.Bool("prof", false, "Enable CPU Prof")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -407,9 +417,21 @@ func main() {
 		go statsMonitor(ctx, rdb, *prefix, config.Threads, stats, *debug)
 	}
 
+	// CPU 性能分析
+	if *prof {
+		f, _ := os.Create("cpu.prof")
+    	defer f.Close()
+    	pprof.StartCPUProfile(f)
+    	defer pprof.StopCPUProfile()
+		// performanceTest()
+	}
+
 	worker := &Worker{rdb: rdb, prefix: *prefix, config: config, db: db, stats: stats, debug: *debug}
 
-	go worker.handleNotify(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go worker.handleNotify(ctx, cancel)
 
 	var wg sync.WaitGroup
 	for i := 0; i < config.Threads; i++ {

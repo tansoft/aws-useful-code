@@ -724,7 +724,7 @@ func main() {
 	enableTLS := flag.Bool("tls", false, "Enable TLS connection to Redis")
 	debug := flag.Bool("debug", false, "Enable debug logging")
 	prof := flag.Bool("prof", false, "Enable CPU Prof")
-	manage := flag.String("manage", "", "Management mode: clear (clear queues) | monitor (monitor worker stats only)")
+	manage := flag.String("manage", "", "Management mode: clear (clear queues) | monitor (monitor worker stats only) | restart (restart worker)")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -766,6 +766,10 @@ func main() {
 			log.Println("Monitor-only mode: listening to worker stats...")
 			stats := &Stats{startTime: time.Now()}
 			statsMonitor(ctx, rdb, *prefix, config.Threads, stats)
+		case "restart":
+			rdb.Publish(ctx, *prefix+"_notify", "update_config")
+		case "stop":
+			rdb.Publish(ctx, *prefix+"_notify", "stop")
 		default:
 			log.Fatalf("Unknown manage command: %s (available: clear, monitor)", *manage)
 		}
@@ -821,6 +825,7 @@ func timeTrack(start time.Time, name string) {
 //go tool pprof cpu.prof
 // (pprof) top10
 // (pprof) list publishTask
+// (pprof) list processTask // for worker
 func performanceTest() {
 	defer timeTrack(time.Now(), "expensiveFunc")
 
