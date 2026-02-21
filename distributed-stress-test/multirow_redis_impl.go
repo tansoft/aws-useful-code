@@ -84,14 +84,14 @@ func (r *MultiRowRedisImpl) PutItem(key string, data map[string]interface{}) err
 func (r *MultiRowRedisImpl) UpdateItem(key string, data map[string]interface{}) error {
 	kvPairs := make([]interface{}, 0, len(data)*2)
 	for col, v := range data {
-		field := fmt.Sprintf("%s:sk:%s", key, col)
+		field := fmt.Sprintf("{%s}:%s", key, col)
 		kvPairs = append(kvPairs, field, r.processValue(v))
 	}
 	return r.client.MSet(r.ctx, kvPairs...).Err()
 }
 
 func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) {
-	pattern := fmt.Sprintf("%s:sk:*", key)
+	pattern := fmt.Sprintf("{%s}:*", key)
 	keys, err := r.client.Keys(r.ctx, pattern).Result()
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) 
 	result := make(map[string]interface{})
 	for i, val := range vals {
 		if val != nil {
-			col := keys[i][len(key)+4:] // 去掉 "key:sk:" 前缀
+			col := keys[i][len(key)+3:] // 去掉 "{key}:" 前缀
 			if str, ok := val.(string); ok {
 				var v interface{}
 				if sonic.UnmarshalString(str, &v) == nil {
@@ -126,7 +126,7 @@ func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) 
 func (r *MultiRowRedisImpl) GetSubItem(key string, columns []string) (map[string]interface{}, error) {
 	keys := make([]string, len(columns))
 	for i, col := range columns {
-		keys[i] = fmt.Sprintf("%s:sk:%s", key, col)
+		keys[i] = fmt.Sprintf("{%s}:%s", key, col)
 	}
 
 	vals, err := r.client.MGet(r.ctx, keys...).Result()
@@ -154,7 +154,7 @@ func (r *MultiRowRedisImpl) BatchGetItem(keys []string) ([]map[string]interface{
 	results := make([]map[string]interface{}, 0, len(keys))
 	
 	for _, key := range keys {
-		pattern := fmt.Sprintf("%s:sk:*", key)
+		pattern := fmt.Sprintf("{%s}:*", key)
 		redisKeys, err := r.client.Keys(r.ctx, pattern).Result()
 		if err != nil {
 			return nil, err
@@ -169,7 +169,7 @@ func (r *MultiRowRedisImpl) BatchGetItem(keys []string) ([]map[string]interface{
 
 			for i, val := range vals {
 				if val != nil {
-					col := redisKeys[i][len(key)+4:] // 去掉 "key:sk:" 前缀
+					col := redisKeys[i][len(key)+3:] // 去掉 "{key}:" 前缀
 					if str, ok := val.(string); ok {
 						var v interface{}
 						if sonic.UnmarshalString(str, &v) == nil {
@@ -190,7 +190,7 @@ func (r *MultiRowRedisImpl) BatchPutItem(items map[string]map[string]interface{}
 	pipe := r.client.Pipeline()
 	for key, data := range items {
 		for col, v := range data {
-			field := fmt.Sprintf("%s:sk:%s", key, col)
+			field := fmt.Sprintf("{%s}:%s", key, col)
 			pipe.Set(r.ctx, field, r.processValue(v), 0)
 		}
 	}
@@ -199,7 +199,7 @@ func (r *MultiRowRedisImpl) BatchPutItem(items map[string]map[string]interface{}
 }
 
 func (r *MultiRowRedisImpl) DeleteItem(key string) error {
-	pattern := fmt.Sprintf("%s:sk:*", key)
+	pattern := fmt.Sprintf("{%s}:*", key)
 	keys, err := r.client.Keys(r.ctx, pattern).Result()
 	if err != nil {
 		return err
