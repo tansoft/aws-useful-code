@@ -6,7 +6,8 @@
     "times": 2,
     "data": {
       "randomkey_": {"r": 16, "len": 10},
-      "sthkey": 5
+      "sthkey": 10,
+      "sthkey2": 5
     }
   },
   {

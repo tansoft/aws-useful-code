@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/elasticache"
-	"github.com/go-redis/redis/v8"
+	"github.com/bytedance/sonic"
+	"github.com/redis/go-redis/v9"
 )
 
 type MultiRowRedisImpl struct {
@@ -35,11 +38,35 @@ func NewMultiRowRedisDB(region, tableName string) (*MultiRowRedisImpl, error) {
 	if resp.ReplicationGroups[0].ConfigurationEndpoint != nil {
 		endpoint := resp.ReplicationGroups[0].ConfigurationEndpoint
 		addr := fmt.Sprintf("%s:%d", *endpoint.Address, *endpoint.Port)
-		client = redis.NewClusterClient(&redis.ClusterOptions{Addrs: []string{addr}})
+		useTLS := strings.Contains(addr, "cache.amazonaws.com")
+		opts := &redis.ClusterOptions{
+			Addrs:        []string{addr},
+			PoolSize:     5000,
+			MinIdleConns: 100,
+			DialTimeout:  10 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		if useTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		client = redis.NewClusterClient(opts)
 	} else {
 		endpoint := resp.ReplicationGroups[0].NodeGroups[0].PrimaryEndpoint
 		addr := fmt.Sprintf("%s:%d", *endpoint.Address, *endpoint.Port)
-		client = redis.NewClient(&redis.Options{Addr: addr})
+		useTLS := strings.Contains(addr, "cache.amazonaws.com")
+		opts := &redis.Options{
+			Addr:         addr,
+			PoolSize:     5000,
+			MinIdleConns: 100,
+			DialTimeout:  10 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		if useTLS {
+			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		client = redis.NewClient(opts)
 	}
 
 	ctx := context.Background()
@@ -55,13 +82,12 @@ func (r *MultiRowRedisImpl) PutItem(key string, data map[string]interface{}) err
 }
 
 func (r *MultiRowRedisImpl) UpdateItem(key string, data map[string]interface{}) error {
-	pipe := r.client.Pipeline()
+	kvPairs := make([]interface{}, 0, len(data)*2)
 	for col, v := range data {
 		field := fmt.Sprintf("%s:sk:%s", key, col)
-		pipe.Set(r.ctx, field, r.processValue(v), 0)
+		kvPairs = append(kvPairs, field, r.processValue(v))
 	}
-	_, err := pipe.Exec(r.ctx)
-	return err
+	return r.client.MSet(r.ctx, kvPairs...).Err()
 }
 
 func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) {
@@ -75,24 +101,22 @@ func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) 
 		return make(map[string]interface{}), nil
 	}
 
-	pipe := r.client.Pipeline()
-	cmds := make([]*redis.StringCmd, len(keys))
-	for i, k := range keys {
-		cmds[i] = pipe.Get(r.ctx, k)
-	}
-	if _, err := pipe.Exec(r.ctx); err != nil && err != redis.Nil {
+	vals, err := r.client.MGet(r.ctx, keys...).Result()
+	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]interface{})
-	for i, cmd := range cmds {
-		if val, err := cmd.Result(); err == nil {
+	for i, val := range vals {
+		if val != nil {
 			col := keys[i][len(key)+4:] // 去掉 "key:sk:" 前缀
-			var v interface{}
-			if json.Unmarshal([]byte(val), &v) == nil {
-				result[col] = v
-			} else {
-				result[col] = val
+			if str, ok := val.(string); ok {
+				var v interface{}
+				if sonic.UnmarshalString(str, &v) == nil {
+					result[col] = v
+				} else {
+					result[col] = str
+				}
 			}
 		}
 	}
@@ -100,24 +124,26 @@ func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) 
 }
 
 func (r *MultiRowRedisImpl) GetSubItem(key string, columns []string) (map[string]interface{}, error) {
-	pipe := r.client.Pipeline()
-	cmds := make([]*redis.StringCmd, len(columns))
+	keys := make([]string, len(columns))
 	for i, col := range columns {
-		field := fmt.Sprintf("%s:sk:%s", key, col)
-		cmds[i] = pipe.Get(r.ctx, field)
+		keys[i] = fmt.Sprintf("%s:sk:%s", key, col)
 	}
-	if _, err := pipe.Exec(r.ctx); err != nil && err != redis.Nil {
+
+	vals, err := r.client.MGet(r.ctx, keys...).Result()
+	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]interface{})
-	for i, cmd := range cmds {
-		if val, err := cmd.Result(); err == nil {
-			var v interface{}
-			if json.Unmarshal([]byte(val), &v) == nil {
-				result[columns[i]] = v
-			} else {
-				result[columns[i]] = val
+	for i, val := range vals {
+		if val != nil {
+			if str, ok := val.(string); ok {
+				var v interface{}
+				if sonic.UnmarshalString(str, &v) == nil {
+					result[columns[i]] = v
+				} else {
+					result[columns[i]] = str
+				}
 			}
 		}
 	}
@@ -126,12 +152,36 @@ func (r *MultiRowRedisImpl) GetSubItem(key string, columns []string) (map[string
 
 func (r *MultiRowRedisImpl) BatchGetItem(keys []string) ([]map[string]interface{}, error) {
 	results := make([]map[string]interface{}, 0, len(keys))
+	
 	for _, key := range keys {
-		item, err := r.GetItem(key)
+		pattern := fmt.Sprintf("%s:sk:*", key)
+		redisKeys, err := r.client.Keys(r.ctx, pattern).Result()
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, item)
+
+		result := make(map[string]interface{})
+		if len(redisKeys) > 0 {
+			vals, err := r.client.MGet(r.ctx, redisKeys...).Result()
+			if err != nil {
+				return nil, err
+			}
+
+			for i, val := range vals {
+				if val != nil {
+					col := redisKeys[i][len(key)+4:] // 去掉 "key:sk:" 前缀
+					if str, ok := val.(string); ok {
+						var v interface{}
+						if sonic.UnmarshalString(str, &v) == nil {
+							result[col] = v
+						} else {
+							result[col] = str
+						}
+					}
+				}
+			}
+		}
+		results = append(results, result)
 	}
 	return results, nil
 }
@@ -179,11 +229,15 @@ func (r *MultiRowRedisImpl) processValue(v interface{}) interface{} {
 		rand.Read(data)
 		return data
 	default:
-		jsonData, _ := json.Marshal(v)
+		jsonData, _ := sonic.Marshal(v)
 		return jsonData
 	}
 }
 
 func (r *MultiRowRedisImpl) Close() error {
 	return r.client.Close()
+}
+
+func (r *MultiRowRedisImpl) GetImplName() string {
+	return "MultiRowRedisImpl"
 }

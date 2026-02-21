@@ -12,6 +12,7 @@ type Database interface {
 	BatchPutItem(items map[string]map[string]interface{}) error
 	DeleteItem(key string) error
 	Close() error
+	GetImplName() string
 }
 
 func NewDatabase(dbType, region, tableName string) (Database, error) {

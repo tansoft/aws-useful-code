@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -282,7 +281,7 @@ func statsMonitor(ctx context.Context, rdb redis.UniversalClient, prefix string,
 	go func() {
 		for msg := range pubsub.Channel() {
 			var data map[string]interface{}
-			if err := json.Unmarshal([]byte(msg.Payload), &data); err == nil {
+			if err := sonic.UnmarshalString(msg.Payload, &data); err == nil {
 				mu.Lock()
 				workerID := data["worker_id"].(string)
 				workerStats[workerID] = data
@@ -440,8 +439,8 @@ func generateValue(task Task, keyGen *KeyGenerator, init bool) []byte {
 		taskData["items"] = items
 	}
 	
-	taskJSON, _ := sonic.Marshal(taskData)
-	return taskJSON
+	taskJSON, _ := sonic.MarshalString(taskData)
+	return []byte(taskJSON)
 }
 
 type taskBatch struct {
@@ -666,9 +665,9 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 					wg.Add(1)
 					go func(t interface{}) {
 						defer wg.Done()
-						taskJSON, _ := json.Marshal(t)
+						taskJSON, _ := sonic.MarshalString(t)
 						var task Task
-						json.Unmarshal(taskJSON, &task)
+						sonic.UnmarshalString(taskJSON, &task)
 						if task.Repeat == 0 {
 							task.Repeat = 1
 						}
@@ -680,9 +679,9 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 				}
 				wg.Wait()
 			} else {
-				taskJSON, _ := json.Marshal(item)
+				taskJSON, _ := sonic.MarshalString(item)
 				var task Task
-				json.Unmarshal(taskJSON, &task)
+				sonic.UnmarshalString(taskJSON, &task)
 				if task.Repeat == 0 {
 					task.Repeat = 1
 				}
@@ -693,9 +692,9 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 			}
 		}
 	case map[string]interface{}:
-		taskJSON, _ := json.Marshal(v)
+		taskJSON, _ := sonic.MarshalString(v)
 		var task Task
-		json.Unmarshal(taskJSON, &task)
+		sonic.UnmarshalString(taskJSON, &task)
 		if task.Repeat == 0 {
 			task.Repeat = 1
 		}
@@ -755,7 +754,7 @@ func main() {
 		log.Fatal(err)
 	}
 	var config Config
-	json.Unmarshal(configData, &config)
+	sonic.Unmarshal(configData, &config)
 
 	// 管理模式
 	if *manage != "" {
@@ -791,7 +790,7 @@ func main() {
 		log.Fatal(err)
 	}
 	var traffic interface{}
-	json.Unmarshal(trafficData, &traffic)
+	sonic.Unmarshal(trafficData, &traffic)
 
 	var stats *Stats
 	if *enableStats {

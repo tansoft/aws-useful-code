@@ -410,6 +410,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+	log.Printf("Using database implementation: %s", db.GetImplName())
 
 	var stats *WorkerStats
 	if *enableStats {

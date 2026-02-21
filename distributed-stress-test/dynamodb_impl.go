@@ -252,3 +252,7 @@ func (d *DynamoDBImpl) fromAttributeValueMap(item map[string]*dynamodb.Attribute
 func (d *DynamoDBImpl) Close() error {
 	return nil
 }
+
+func (d *DynamoDBImpl) GetImplName() string {
+	return "DynamoDBImpl"
+}

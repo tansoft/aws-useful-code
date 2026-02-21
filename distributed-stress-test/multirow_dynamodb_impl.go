@@ -322,3 +322,7 @@ func (d *MultiRowDynamoDBImpl) fromAttributeValue(attr *dynamodb.AttributeValue)
 func (d *MultiRowDynamoDBImpl) Close() error {
 	return nil
 }
+
+func (d *MultiRowDynamoDBImpl) GetImplName() string {
+	return "MultiRowDynamoDBImpl"
+}
