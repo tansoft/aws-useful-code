@@ -669,11 +669,11 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 						taskJSON, _ := json.Marshal(t)
 						var task Task
 						json.Unmarshal(taskJSON, &task)
-						if task.repeat == 0 {
-							task.repeat = 1
+						if task.Repeat == 0 {
+							task.Repeat = 1
 						}
-						log.Printf("Publishing parallel task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
-						for i := 0; i < task.repeat; i++ {
+						log.Printf("Publishing parallel task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.Repeat)
+						for i := 0; i < task.Repeat; i++ {
 							publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 						}
 					}(subItem)
@@ -683,11 +683,11 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 				taskJSON, _ := json.Marshal(item)
 				var task Task
 				json.Unmarshal(taskJSON, &task)
-				if task.repeat == 0 {
-					task.repeat = 1
+				if task.Repeat == 0 {
+					task.Repeat = 1
 				}
-				log.Printf("Publishing list task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
-				for i := 0; i < task.repeat; i++ {
+				log.Printf("Publishing list task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.Repeat)
+				for i := 0; i < task.Repeat; i++ {
 					publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 				}
 			}
@@ -696,11 +696,11 @@ func processTraffic(ctx context.Context, rdb redis.UniversalClient, prefix strin
 		taskJSON, _ := json.Marshal(v)
 		var task Task
 		json.Unmarshal(taskJSON, &task)
-		if task.repeat == 0 {
-			task.repeat = 1
+		if task.Repeat == 0 {
+			task.Repeat = 1
 		}
-		log.Printf("Publishing task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.repeat)
-		for i := 0; i < task.repeat; i++ {
+		log.Printf("Publishing task: action=%s, qps=%d, repeat=%d\n", task.Action, task.QPS, task.Repeat)
+		for i := 0; i < task.Repeat; i++ {
 			publishTask(ctx, rdb, prefix, threads, task, stats, debug)
 		}
 	}
