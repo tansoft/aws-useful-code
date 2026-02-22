@@ -1,6 +1,6 @@
 [
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 1,
     "qps": 625000,
     "times": 687188083,
@@ -10,7 +10,7 @@
     }
   },
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 2,
     "qps": 277778,
     "times": 2170660028,
@@ -21,7 +21,7 @@
     }
   },
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 3,
     "qps": 250000,
     "times": 328993975,
@@ -33,7 +33,7 @@
     }
   },
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 4,
     "qps": 227273,
     "times": 1008786728,
@@ -46,7 +46,7 @@
     }
   },
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 5,
     "qps": 208333,
     "times": 215165366,
@@ -60,7 +60,7 @@
     }
   },
   {
-    "action": "updateItem",
+    "action": "putItem",
     "seed": 6,
     "qps": 94340,
     "times": 57463421,
