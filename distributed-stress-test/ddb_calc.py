@@ -4,12 +4,18 @@ DynamoDB 费用精确计算工具 - 支持多列和多行模式
 
 使用方法：
     python ddb_calc.py traffic1.json [traffic2.json ...]
+    e.g.:
+        python3 ddb_calc.py traffic_write.json traffic_read.json
+
+注意事项：
+    在生成每天的流量图时，会简化逻辑，直接按24小时，每小时的流量进行计算，忽略duration，repeat，samples等的计算
 """
 
 import json
 import sys
 import openpyxl
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
+from openpyxl.styles.borders import BORDER_THIN, BORDER_THICK, BORDER_MEDIUM
 
 # DynamoDB 定价 (us-east-1 区域)
 PRICING = {
@@ -53,6 +59,129 @@ def smooth_qpss(qpss):
             break
     return result
 
+def format_range(ws, cell_range, style_dict=None, **kwargs):
+    """
+    格式化指定范围的单元格
+    
+    Args:
+        ws: worksheet 对象
+        cell_range: 单元格范围，如 "A1:C5" 或 [(1,1), (5,3)] 或单个单元格 "A1"
+        style_dict: 样式字典
+        **kwargs: 格式化参数
+    
+    Example:
+        # 方式1：使用关键字参数
+        format_range(ws, "A1:C5",
+                    font_name="Arial", 
+                    font_size=12, 
+                    bold=True,
+                    bg_color="FFFF00",
+                    horizontal="center",
+                    number_format='#,##0.00')
+        
+        # 方式2：使用样式字典
+        style = {
+            'font': {'name': 'Arial', 'size': 12, 'bold': True, 'color': 'FF0000'},
+            'fill': {'color': 'FFFF00'},
+            'alignment': {'horizontal': 'center', 'vertical': 'middle'},
+            'border': 'thin'
+        }
+        format_range(ws, "A1:C5", style_dict=style)
+
+        # 格式化表头
+        format_range(ws, cell_range, font_name="Arial", font_size=12, bold=True, bg_color="366092",
+                font_color="FFFFFF", horizontal="center", vertical="middle", border="thin")
+        # 格式化数据
+        format_range(ws, cell_range, font_name="Arial", font_size=10, horizontal="left", vertical="middle", border="thin")
+        # 格式化汇总
+        format_range(ws, cell_range, font_name="Arial", font_size=11, bold=True, bg_color="D9D9D9", horizontal="right", vertical="middle", border="medium")
+    """
+    
+    # 合并参数
+    if style_dict:
+        kwargs.update(style_dict)
+    
+    # 获取范围内的所有单元格
+    try:
+        cells = ws[cell_range]
+        # 如果是单个单元格，转换为可迭代格式
+        if hasattr(cells, 'coordinate'):
+            cells = [[cells]]
+        elif not isinstance(cells[0], (list, tuple)):
+            cells = [cells]
+    except:
+        print(f"Invalid range: {cell_range}")
+        return
+    
+    # 遍历所有单元格
+    for row in cells:
+        for cell in row:
+            apply_cell_format(cell, **kwargs)
+
+def apply_cell_format(cell, **kwargs):
+    """应用格式到单个单元格"""
+    
+    # 字体设置
+    font_params = {}
+    if 'font' in kwargs:
+        font_params.update(kwargs['font'])
+    
+    # 从直接参数中获取字体设置
+    for key in ['font_name', 'font_size', 'bold', 'italic', 'font_color']:
+        if key in kwargs:
+            param_name = key.replace('font_', '') if key.startswith('font_') else key
+            if param_name == 'font_color':
+                param_name = 'color'
+            font_params[param_name] = kwargs[key]
+    
+    if font_params:
+        cell.font = Font(**font_params)
+    
+    # 背景填充
+    if 'fill' in kwargs:
+        fill_params = kwargs['fill']
+        cell.fill = PatternFill(
+            start_color=fill_params.get('color', 'FFFFFF'),
+            end_color=fill_params.get('color', 'FFFFFF'),
+            fill_type=fill_params.get('type', 'solid')
+        )
+    elif 'bg_color' in kwargs:
+        cell.fill = PatternFill(
+            start_color=kwargs['bg_color'],
+            end_color=kwargs['bg_color'],
+            fill_type='solid'
+        )
+    
+    # 对齐方式
+    alignment_params = {}
+    if 'alignment' in kwargs:
+        alignment_params.update(kwargs['alignment'])
+    
+    for key in ['horizontal', 'vertical', 'wrap_text']:
+        if key in kwargs:
+            alignment_params[key] = kwargs[key]
+    
+    if alignment_params:
+        cell.alignment = Alignment(**alignment_params)
+    
+    # 边框设置
+    if 'border' in kwargs:
+        border_style = kwargs['border']
+        if isinstance(border_style, str):
+            side = Side(style=border_style)
+            cell.border = Border(left=side, right=side, top=side, bottom=side)
+        elif isinstance(border_style, dict):
+            sides = {}
+            for position in ['left', 'right', 'top', 'bottom']:
+                if position in border_style:
+                    sides[position] = Side(style=border_style[position])
+                else:
+                    sides[position] = Side(style=border_style.get('style', 'thin'))
+            cell.border = Border(**sides)
+    
+    if 'number_format' in kwargs:
+        cell.number_format = kwargs['number_format']
+
 def parse_traffic(filenames):
     """解析traffic文件"""
     if isinstance(filenames, str):
@@ -72,7 +201,7 @@ def parse_traffic(filenames):
         qpss = task.get('qpss', [])
         
         # 记录seed的每一列数据
-        if seed > 0 and action in ['putItem', 'updateItem', 'batchPutItem']:
+        if seed > 0 and action in ['putItem', 'updateItem', 'batchPutItem', 'deleteItem']:
             if seed not in stats['seed_columns']:
                 stats['seed_columns'][seed] = []
             
@@ -171,7 +300,6 @@ def create_base_sheet(ws, stats):
     ht = Font(bold=True, color="FFFFFF")
     sf = PatternFill(start_color="B4C7E7", end_color="B4C7E7", fill_type="solid")
     st = Font(bold=True)
-    ff = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
     
     row = 1
     rows = {}
@@ -195,16 +323,16 @@ def create_base_sheet(ws, stats):
             ws[f'A{row}'] = seed
             ws[f'B{row}'] = col_info['name']
             ws[f'C{row}'] = col_info['size_bytes']
-            ws[f'A{row}'].fill = ff
-            ws[f'B{row}'].fill = ff
-            ws[f'C{row}'].fill = ff
             ws[f'D{row}'] = f"=C{row}/1024"
             ws[f'E{row}'] = f"=ROUNDUP(C{row}/1024,0)"
             ws[f'F{row}'] = f"=ROUNDUP(C{row}/4096,0)*0.5"
             row += 1
     col_def_end = row - 1
     row += 2
-    
+    format_range(ws, f"A{col_def_start}:C{col_def_end}", bg_color="FFC000")
+    format_range(ws, f"C{col_def_start}:C{col_def_end}", number_format='#,##')
+    format_range(ws, f"D{col_def_start}:D{col_def_end}", number_format='#,##0.00')
+
     # 写入操作明细
     ws.merge_cells(f'A{row}:M{row}')
     ws[f'A{row}'] = "写入操作明细"
@@ -227,11 +355,6 @@ def create_base_sheet(ws, stats):
         ws[f'C{row}'] = op['count']/op['qps']/3600 # op.get('hour', -1)
         ws[f'D{row}'] = op['qps']
         ws[f'E{row}'] = op['count']
-        ws[f'A{row}'].fill = ff
-        ws[f'B{row}'].fill = ff
-        ws[f'C{row}'].fill = ff
-        ws[f'D{row}'].fill = ff
-        ws[f'E{row}'].fill = ff
         ws[f'F{row}'] = f"=COUNTIF($A${col_def_start}:$A${col_def_end},{seed})" #列数
         ws[f'G{row}'] = f"=SUMIF($A${col_def_start}:$A${col_def_end},{seed},$D${col_def_start}:$D${col_def_end})" #item大小
         ws[f'H{row}'] = f"=E{row}*G{row}/1024/1024" # 数据量
@@ -258,6 +381,12 @@ def create_base_sheet(ws, stats):
     rows['多列总WRU(点写)'] = f'$J${row}'
     rows['多列总WRU(批写)'] = f'$K${row}'
     rows['多行总WRU'] = f'$M${row}'
+    format_range(ws, f"A{write_start}:E{write_end}", bg_color="FFC000")
+    format_range(ws, f"C{write_start}:C{write_end+1}", number_format='#,##0.00')
+    format_range(ws, f"D{write_start}:E{write_end+1}", number_format='#,##')
+    format_range(ws, f"G{write_start}:H{write_end+1}", number_format='#,##0.00')
+    format_range(ws, f"J{write_start}:K{write_end+1}", number_format='#,##')
+    format_range(ws, f"M{write_start}:M{write_end+1}", number_format='#,##')
     row += 3
     
     # 读取操作明细
@@ -281,11 +410,6 @@ def create_base_sheet(ws, stats):
         ws[f'C{row}'] = op.get('hour', -1) # op['count']/op['qps']/3600
         ws[f'D{row}'] = op['qps']
         ws[f'E{row}'] = op['count']
-        ws[f'A{row}'].fill = ff
-        ws[f'B{row}'].fill = ff
-        ws[f'C{row}'].fill = ff
-        ws[f'D{row}'].fill = ff
-        ws[f'E{row}'].fill = ff
         ws[f'F{row}'] = f"=COUNTIF($A${col_def_start}:$A${col_def_end},{seed})" #列数
         ws[f'G{row}'] = f"=SUMIF($A${col_def_start}:$A${col_def_end},{seed},$D${col_def_start}:$D${col_def_end})" #item大小
         ws[f'H{row}'] = f"=ROUNDUP(G{row}/4,0)*0.5"  # 多列RRU/次
@@ -298,6 +422,11 @@ def create_base_sheet(ws, stats):
         # ws[f'G{row}'] = op['item_size_kb']
         row += 1
     read_end = row - 1
+    format_range(ws, f"A{read_start}:E{read_end}", bg_color="FFC000")
+    format_range(ws, f"D{read_start}:E{read_end}", number_format='#,##')
+    format_range(ws, f"G{read_start}:G{read_end}", number_format='#,##0.00')
+    format_range(ws, f"I{read_start}:J{read_end}", number_format='#,##')
+    format_range(ws, f"L{read_start}:M{read_end}", number_format='#,##')
 
     ws[f'O{read_start-1}'] = "多列RCU曲线"
     ws[f'P{read_start-1}'] = "多行RCU曲线"
@@ -334,6 +463,8 @@ def create_base_sheet(ws, stats):
     ws[f'O{read_start+31}'] = f"=SUMIF(O{read_start}:O{read_start+23},\">\"&O{read_start+30},O{read_start}:O{read_start+23})-O{read_start+30}*COUNTIF(O{read_start}:O{read_start+23},\">\"&O{read_start+30})"
     ws[f'P{read_start+31}'] = f"=SUMIF(P{read_start}:P{read_start+23},\">\"&P{read_start+30},P{read_start}:P{read_start+23})-P{read_start+30}*COUNTIF(P{read_start}:P{read_start+23},\">\"&P{read_start+30})"
 
+    format_range(ws, f"O{read_start}:P{read_start+31}", number_format='#,##')
+
     rows['多列总RRU'] = f'$O${read_start+26}'
     rows['多行总RRU'] = f'$P${read_start+26}'
     rows['多列总RCU'] = f'$O${read_start+27}'
@@ -349,31 +480,19 @@ def create_base_sheet(ws, stats):
     rows['多行剩余预置RCU'] = f'$P${read_start+31}'
 
     # 格式化
-    for col in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']:
-        ws.column_dimensions[col].width = 18
-    
-    for r in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in r:
-            if cell.column >= 2 and cell.value:
-                if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
-                    cell.number_format = '#,##0.00'
+    for i in range(ord('A'), ord('Q')):
+        ws.column_dimensions[chr(i)].width = 18
     
     return rows
 
 def create_calc_sheet(ws, rows):
     """创建计算表"""
-    hf = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
-    ht = Font(bold=True, color="FFFFFF", size=12)
-    sf = PatternFill(start_color="B4C7E7", end_color="B4C7E7", fill_type="solid")
-    st = Font(bold=True)
-
     row = 1
 
     # 配置信息
     ws.merge_cells(f'A{row}:G{row}')
     ws[f'A{row}'] = "配置信息"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws.append(['','按需','预置(小时)','预留(1年)','预留(3年)','预付(1年)','预付(3年)'])
@@ -383,15 +502,18 @@ def create_calc_sheet(ws, rows):
     ws.append(['RRU/RCU',PRICING['on_demand_read'],PRICING['provisioned_rcu_hour'],
         PRICING['reserved_rcu_hour_1y'],PRICING['reserved_rcu_hour_3y'],
         PRICING['reserved_upfront_rcu_100_1y'],PRICING['reserved_upfront_rcu_100_3y']])
-    ws.append(['存储(GB/月)',PRICING['storage_gb_month'],'','最大WCU',5000000,'预留购买小时数',f'=基础数据!{rows["预留小时数"]}'])
+    ws.append(['存储(GB/月)',PRICING['storage_gb_month'],'','最大WCU',5000000,'折扣off',1.0])
     base_row = row+1
+    ws[f'F{base_row+3}'] = '预留购买小时数'
+    ws[f'G{base_row+3}'] = f'=基础数据!{rows["预留小时数"]}'
+    format_range(ws, f'E{base_row+2}', number_format='#,##', bg_color="FFC000")
+    format_range(ws, f'G{base_row+2}', number_format='#,##0.00', bg_color="FFC000")
     row += 5
 
     # 基础数据
     ws.merge_cells(f'A{row}:D{row}')
     ws[f'A{row}'] = "基础数据"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     stats_row = row + 1
@@ -399,20 +521,22 @@ def create_calc_sheet(ws, rows):
     ws.append(['数据量(GB)',f'=基础数据!{rows["数据量(GB)"]}',f'=基础数据!{rows["数据量(GB)"]}',f'=基础数据!{rows["数据量(GB)"]}'])
     ws.append(['总WRU',f'=基础数据!{rows["多列总WRU(点写)"]}',f'=基础数据!{rows["多列总WRU(批写)"]}',f'=基础数据!{rows["多行总WRU"]}'])
     ws.append(['写入小时',f'=ROUNDUP(B{stats_row+1}/$E${base_row+2}/3600,0)',f'=ROUNDUP(C{stats_row+1}/$E${base_row+2}/3600,0)',f'=ROUNDUP(D{stats_row+1}/$E${base_row+2}/3600,0)'])
-    ws.append(['预留WCU',f'=IF(B{row+3}>$G${base_row+2},$E${base_row+2},0)',f'=IF(C{row+3}>$G${base_row+2},$E${base_row+2},0)',f'=IF(D{row+3}>$G${base_row+2},$E${base_row+2},0)'])
+    ws.append(['预留WCU',f'=IF(B{row+3}>=$G${base_row+3},$E${base_row+2},0)',f'=IF(C{row+3}>=$G${base_row+3},$E${base_row+2},0)',f'=IF(D{row+3}>=$G${base_row+3},$E${base_row+2},0)'])
     ws.append(['总RRU',f'=基础数据!{rows["多列总RRU"]}',f'=基础数据!{rows["多列总RRU"]}',f'=基础数据!{rows["多行总RRU"]}'])
     ws.append(['总RCU',f'=基础数据!{rows["多列总RCU"]}',f'=基础数据!{rows["多列总RCU"]}',f'=基础数据!{rows["多行总RCU"]}'])
     ws.append(['最大RCU',f'=基础数据!{rows["多列最大RCU"]}',f'=基础数据!{rows["多列最大RCU"]}',f'=基础数据!{rows["多行最大RCU"]}'])
     ws.append(['预留RCU',f'=基础数据!{rows["多列预留RCU"]}',f'=基础数据!{rows["多列预留RCU"]}',f'=基础数据!{rows["多行预留RCU"]}'])
     ws.append(['剩余预置RCU',f'=基础数据!{rows["多列剩余预置RCU"]}',f'=基础数据!{rows["多列剩余预置RCU"]}',f'=基础数据!{rows["多行剩余预置RCU"]}'])
 
+    format_range(ws, f"B{stats_row}:D{stats_row}", number_format='#,##0.00')
+    format_range(ws, f"B{stats_row+1}:D{stats_row+8}", number_format='#,##')
+
     row += 11
 
     # 费用汇总
     ws.merge_cells(f'A{row}:D{row}')
     ws[f'A{row}'] = "按需费用汇总"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入按需费用"
@@ -439,13 +563,19 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-3}:D{row-1})"
     row += 1
 
+    ws[f'A{row}'] = "折后总计"
+    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
+    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
+    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
+    row += 1
+
     row += 1
 
     # 预置费用汇总
     ws.merge_cells(f'A{row}:D{row}')
     ws[f'A{row}'] = "预置费用汇总"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入预置费用"
@@ -472,13 +602,19 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-3}:D{row-1})"
     row += 1
 
+    ws[f'A{row}'] = "折后总计"
+    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
+    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
+    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
+    row += 1
+
     row += 1
 
     # 预留费用汇总
     ws.merge_cells(f'A{row}:D{row}')
     ws[f'A{row}'] = "预留费用汇总"
-    ws[f'A{row}'].fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    ws[f'A{row}'].font = Font(bold=True, color="FFFFFF")
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入预留费用"
@@ -517,15 +653,16 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-5}:D{row-1})"
     row += 1
 
+    ws[f'A{row}'] = "折后总计"
+    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
+    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
+    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    format_range(ws, f"B{row-7}:D{row}", number_format='#,##0.00')
+    row += 1
+
     # 格式化
-    for col in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']:
-        ws.column_dimensions[col].width = 18
-    
-    for r in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in r:
-            if cell.column >= 2 and cell.value:
-                if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
-                    cell.number_format = '#,##0.00'
+    for i in range(ord('A'), ord('J')):
+        ws.column_dimensions[chr(i)].width = 18
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
