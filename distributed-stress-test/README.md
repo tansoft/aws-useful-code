@@ -20,29 +20,7 @@
 {
   "table_name": "stress-test",
   "region": "us-east-1",
-  "threads": 10,
-  "sample_data":
-[
-  {
-    "bid_feedback_1h_16": 140,
-    "bid_feedback_1h_2": 139
-  },
-  {
-    "request_1h_11": 154,
-    "request_1h_3": 231,
-    "request_1h_6": 77,
-    "request_1h_7": 77
-  },
-  {
-    "request_1h_13": 83
-  },
-  {
-    "request_1h_16": 186,
-    "request_1h_2": 77,
-    "request_1h_4": 376,
-    "request_1h_6": 77
-  }
-]
+  "threads": 10
 }
 ```
 
@@ -68,8 +46,8 @@
 * duration：表示执行多长时间（秒）就完成，需要确保精确数量和固定随机值请使用times指定。
 * repeat：表示该任务重复做多少次，默认值为1。考虑读取的场景，因数据量不足，经历过一段时间后，可能面临按随机种子生成的key，无法获得内容，因此进行重置。
 * samples：表示data数据使用seed预先生成多少份，在实际填充时，在预先生成的数据中取，加快速度，如果不指定或0表示每次都需要产生随机数据。
-*         在batchGetItem 和 batchPutItem时，表示每次批量操作的item数量，如果不指定默认10。注意DynamoDB限制：batchGetItem最多100，batchPutItem最多25。
-*         注意：因为samples在这个时候指定item数量，item不会预先生成，随机逻辑相当于没有指定samples。以下操作两者相等。
+  * 在batchGetItem 和 batchPutItem时，表示每次批量操作的item数量，如果不指定默认10。注意DynamoDB限制：batchGetItem最多100，batchPutItem最多25。
+  * 注意：因为samples在这个时候指定item数量，item不会预先生成，随机逻辑相当于没有指定samples。以下操作两者相等。
 
 ```json
   {
@@ -220,6 +198,19 @@ aws application-autoscaling put-scaling-policy \
   --target-tracking-scaling-policy-configuration \
     '{"TargetValue":70.0,"PredefinedMetricSpecification":{"PredefinedMetricType":"DynamoDBWriteCapacityUtilization"}}'
 ```
+
+### ElastiCache压测建表参数参考
+
+* Engine: Valkey
+* Deployment: Node-based cluster
+* Create method: Cluster cache
+* Cluster mode: Enable
+* Cluster Name: multicolumn-street-test
+* Node type: cache.r6gd.16xlarge 2T容量 25G带宽
+* Shards: 35 (70TB总存储)
+* Replicas: 1
+* Availability Zone placements: Specify Availability Zones (方便进行Cross-AZ流量核算)
+* Automatic backups: Disable (for test only)
 
 ### 编译
 
