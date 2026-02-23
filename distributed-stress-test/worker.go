@@ -373,11 +373,12 @@ func main() {
 	if strings.Contains(*redisAddr, "cluster") {
 		opts := &redis.ClusterOptions{
 			Addrs:        []string{*redisAddr},
-			PoolSize:     500,
-			MinIdleConns: 100,
-			DialTimeout:  10 * time.Second,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			PoolSize:     100,
+			MinIdleConns: 20,
+			DialTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			PoolTimeout:  60 * time.Second,
 		}
 		if *useTLS {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
@@ -386,11 +387,12 @@ func main() {
 	} else {
 		opts := &redis.Options{
 			Addr:         *redisAddr,
-			PoolSize:     500,
-			MinIdleConns: 100,
-			DialTimeout:  10 * time.Second,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			PoolSize:     100,
+			MinIdleConns: 20,
+			DialTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			PoolTimeout:  60 * time.Second,
 		}
 		if *useTLS {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
