@@ -502,7 +502,7 @@ def create_calc_sheet(ws, rows):
     ws.append(['RRU/RCU',PRICING['on_demand_read'],PRICING['provisioned_rcu_hour'],
         PRICING['reserved_rcu_hour_1y'],PRICING['reserved_rcu_hour_3y'],
         PRICING['reserved_upfront_rcu_100_1y'],PRICING['reserved_upfront_rcu_100_3y']])
-    ws.append(['存储(GB/月)',PRICING['storage_gb_month'],'','最大WCU',5000000,'折扣off',1.0])
+    ws.append(['存储(GB/月)',PRICING['storage_gb_month'],'','最大WCU',5000000,'折扣off',0.0])
     base_row = row+1
     ws[f'F{base_row+3}'] = '预留购买小时数'
     ws[f'G{base_row+3}'] = f'=基础数据!{rows["预留小时数"]}'
@@ -564,9 +564,9 @@ def create_calc_sheet(ws, rows):
     row += 1
 
     ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
-    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
-    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
     format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
     row += 1
 
@@ -603,9 +603,9 @@ def create_calc_sheet(ws, rows):
     row += 1
 
     ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
-    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
-    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
     format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
     row += 1
 
@@ -654,9 +654,9 @@ def create_calc_sheet(ws, rows):
     row += 1
 
     ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*$G${base_row+2}"
-    ws[f'C{row}'] = f"=C{row-1}*$G${base_row+2}"
-    ws[f'D{row}'] = f"=D{row-1}*$G${base_row+2}"
+    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
     format_range(ws, f"B{row-7}:D{row}", number_format='#,##0.00')
     row += 1
 
