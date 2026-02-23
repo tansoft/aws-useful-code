@@ -373,7 +373,7 @@ func main() {
 	if strings.Contains(*redisAddr, "cluster") {
 		opts := &redis.ClusterOptions{
 			Addrs:        []string{*redisAddr},
-			PoolSize:     5000,
+			PoolSize:     500,
 			MinIdleConns: 100,
 			DialTimeout:  10 * time.Second,
 			ReadTimeout:  10 * time.Second,
@@ -386,7 +386,7 @@ func main() {
 	} else {
 		opts := &redis.Options{
 			Addr:         *redisAddr,
-			PoolSize:     5000,
+			PoolSize:     500,
 			MinIdleConns: 100,
 			DialTimeout:  10 * time.Second,
 			ReadTimeout:  10 * time.Second,

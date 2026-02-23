@@ -41,7 +41,7 @@ func NewRedisDB(region, tableName string) (*RedisImpl, error) {
 		useTLS := strings.Contains(addr, "cache.amazonaws.com")
 		opts := &redis.ClusterOptions{
 			Addrs:        []string{addr},
-			PoolSize:     5000,
+			PoolSize:     500,
 			MinIdleConns: 100,
 			DialTimeout:  10 * time.Second,
 			ReadTimeout:  10 * time.Second,
@@ -57,7 +57,7 @@ func NewRedisDB(region, tableName string) (*RedisImpl, error) {
 		useTLS := strings.Contains(addr, "cache.amazonaws.com")
 		opts := &redis.Options{
 			Addr:         addr,
-			PoolSize:     5000,
+			PoolSize:     500,
 			MinIdleConns: 100,
 			DialTimeout:  10 * time.Second,
 			ReadTimeout:  10 * time.Second,
