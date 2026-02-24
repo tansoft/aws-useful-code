@@ -42,7 +42,7 @@ func NewMultiRowRedisDB(region, tableName string) (*MultiRowRedisImpl, error) {
 		opts := &redis.ClusterOptions{
 			Addrs:        []string{addr},
 			PoolSize:     100,
-			MinIdleConns: 20,
+			MinIdleConns: 100,
 			DialTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
@@ -59,7 +59,7 @@ func NewMultiRowRedisDB(region, tableName string) (*MultiRowRedisImpl, error) {
 		opts := &redis.Options{
 			Addr:         addr,
 			PoolSize:     100,
-			MinIdleConns: 20,
+			MinIdleConns: 100,
 			DialTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,

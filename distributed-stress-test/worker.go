@@ -374,7 +374,7 @@ func main() {
 		opts := &redis.ClusterOptions{
 			Addrs:        []string{*redisAddr},
 			PoolSize:     100,
-			MinIdleConns: 20,
+			MinIdleConns: 100,
 			DialTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
@@ -388,7 +388,7 @@ func main() {
 		opts := &redis.Options{
 			Addr:         *redisAddr,
 			PoolSize:     100,
-			MinIdleConns: 20,
+			MinIdleConns: 100,
 			DialTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
