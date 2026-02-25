@@ -94,9 +94,21 @@ func (r *MultiRowRedisImpl) UpdateItem(key string, data map[string]interface{}) 
 
 func (r *MultiRowRedisImpl) GetItem(key string) (map[string]interface{}, error) {
 	pattern := fmt.Sprintf("{%s}:*", key)
-	keys, err := r.client.Keys(r.ctx, pattern).Result()
-	if err != nil {
-		return nil, err
+	var keys []string
+	var cursor uint64
+	
+	// 使用 SCAN 替代 KEYS，避免阻塞
+	for {
+		var scanKeys []string
+		var err error
+		scanKeys, cursor, err = r.client.Scan(r.ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, scanKeys...)
+		if cursor == 0 {
+			break
+		}
 	}
 
 	if len(keys) == 0 {
@@ -157,9 +169,21 @@ func (r *MultiRowRedisImpl) BatchGetItem(keys []string) ([]map[string]interface{
 	
 	for _, key := range keys {
 		pattern := fmt.Sprintf("{%s}:*", key)
-		redisKeys, err := r.client.Keys(r.ctx, pattern).Result()
-		if err != nil {
-			return nil, err
+		var redisKeys []string
+		var cursor uint64
+		
+		// 使用 SCAN 替代 KEYS
+		for {
+			var scanKeys []string
+			var err error
+			scanKeys, cursor, err = r.client.Scan(r.ctx, cursor, pattern, 100).Result()
+			if err != nil {
+				return nil, err
+			}
+			redisKeys = append(redisKeys, scanKeys...)
+			if cursor == 0 {
+				break
+			}
 		}
 
 		result := make(map[string]interface{})
