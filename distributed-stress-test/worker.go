@@ -286,7 +286,15 @@ func (w *Worker) handleNotify(ctx context.Context, cancel context.CancelFunc) {
 			cmd := exec.Command(os.Args[0], os.Args[1:]...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			cmd.Start()
+			cmd.Stdin = os.Stdin
+			cmd.Env = os.Environ()
+			cmd.Dir, _ = os.Getwd()
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			if err := cmd.Start(); err != nil {
+				log.Printf("Failed to start new process: %v", err)
+				return
+			}
+			time.Sleep(time.Second)
 			cancel()
 			return
 		case "stop":

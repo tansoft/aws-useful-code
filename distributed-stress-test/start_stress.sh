@@ -31,7 +31,7 @@ cd aws-useful-code/distributed-stress-test/
 export GOCACHE=/root/.cache/go-build
 export GOMODCACHE=/root/go/pkg/mod
 ./build.sh
-./worker $*
+nohup ./worker $* &
 "
 
 # 运行远端脚本的方式，sed 替换 $* 目的是把运行参数替换到启动脚本中运行程序
