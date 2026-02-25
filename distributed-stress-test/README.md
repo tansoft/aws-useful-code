@@ -331,16 +331,17 @@ Worker:
 
 ### 操作对应关系
 
-| 操作 | 多列模式 (DynamoDB) | 多行模式 (DynamoDB) | 多列模式 (Redis) | 多行模式 (Redis) |
-|------|---------|---------|-------------------|-----------------|
-| putItem | 单行多列 PutItem | 多行单列 (每列一行) BatchWriteItem | SET | 多个 key (每列一个) 多次SET |
-| updateItem | 单行多列 UpdateItem | 多行单列 (每列一行) BatchWriteItem | GET+SET | 多个 key (每列一个) 多次SET |
-| getItem | 返回所有列 GetItem | Id查询返回所有行，Query | GET | Keys + GET 多个 key |
-| getSubItem | 返回指定列 GetItem + Projection | BatchGetItem | GET+过滤(无法节省流量) | 多次GET |
-| deleteItem | 单行删除 DeleteItem | 删除多行 Query+DeleteItem | DEL | Keys + DEL 多个key |
-| batchGetItem | BatchGetItem | 多次Query | 多次GET | 多次getItem |
-| batchGetSubItem | BatchGetItem + Projection | BatchGetItem | 多次GET+过滤(无法节省流量) | 多次getSubItem |
-| batchPutItem | BatchWriteItem | 多次BatchWriteItem | 多次SET | 双循环多次SET |
+| 操作 | 多列模式 (DynamoDB) | 多行模式 (DynamoDB) | 多列模式 (Redis) | 多行模式 (Redis+Hash实现) | 多行模式 (Redis+多Item实现) |
+|------|---------|---------|-------------------|-----------------|-----------------|
+| putItem | 单行多列 PutItem | 多行单列 (每列一行) BatchWriteItem | SET | HSET | MSET（存在覆盖问题） |
+| updateItem | 单行多列 UpdateItem | 多行单列 (每列一行) BatchWriteItem | GET+SET | HSET | MSET |
+| getItem | 返回所有列 GetItem | Id查询返回所有行，Query | GET | HGETALL | SCAN+MGET（性能问题） |
+| getSubItem | 返回指定列 GetItem + Projection | BatchGetItem | GET+过滤(无法节省流量) | HMGET | MGET |
+| deleteItem | 单行删除 DeleteItem | 删除多行 Query+DeleteItem | DEL | DEL | Keys+DEL 多个key |
+| batchGetItem | BatchGetItem | 多次Query | 多次GET | Pipeline+多次HGETALL | SCAN+MGET（性能问题） |
+| batchGetSubItem | BatchGetItem + Projection | BatchGetItem | 多次GET+过滤(无法节省流量) | Pipeline+多次HMGET | 多次getSubItem |
+| batchPutItem | BatchWriteItem | 多次BatchWriteItem | 多次SET | Pipeline+HSET | Pipeline+双循环SET（多分区） |
+
 
 * 注意：在多行模式下，putItem和updateItem实现是一样的，假设是putItem的时候，是全列进行更新。严格情况下，putItem语义应考虑需要把多余的行删除（或先进行整个删除再写）。
 * Redis使用多列模式比较合适，但是需要考虑只获取单列的场景，获取流量是无法节省的（多行模式可以节省），可以考虑 多列+多行混合的模式。

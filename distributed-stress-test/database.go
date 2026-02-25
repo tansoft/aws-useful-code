@@ -26,7 +26,8 @@ func NewDatabase(dbType, region, tableName string) (Database, error) {
 		return NewDynamoDB(region, tableName)
 	case "redis":
 		if isMultiRow {
-			return NewMultiRowRedisDB(region, tableName)
+			// return NewMultiRowRedisDB(region, tableName)
+			return NewHashRedisDB(region, tableName)
 		}
 		return NewRedisDB(region, tableName)
 	default:
