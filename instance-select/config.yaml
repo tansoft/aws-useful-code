@@ -29,11 +29,39 @@ network:
   # bandwidth_min: 1
   # bandwidth_max: 10
 
-# 是否需要公网IP（可选，默认false）
-public_ip: false
+# 是否需要公网IP（可选，列出机器支持公网ip数，区域dto费用）
+public_ip: true
 
-# 架构类型（可选）：x86, arm, mac
-# architecture: x86
+# 架构类型（可选，支持多选）：x86, arm, mac
+architecture:
+  - x86
+  - arm
+
+# 操作系统（可选，默认Linux）：Linux, Windows, RHEL, SUSE
+operating_system: Linux
+
+# 实例类型前缀过滤（可选）：如 "cmr" 表示只包含 c/m/r 系列
+instance_type_prefix: cmr
+
+# 实例类型后缀过滤（可选）：
+#   "-" 表示只要基本型（包括 m5, m6i, m6a, m6g, m7i-flex 等处理器变体）
+#   "dn" 表示包含 d/n 增强型（如 m5d, m5n, m5dn, m5ad, m5an 等）
+instance_type_postfix: "-"
+
+# 价格类型配置（可选，默认只计算按需价格）
+pricing_types:
+  ondemand: true
+  spot: true
+  # ri_1y_no_upfront: true
+  # ri_1y_partial_upfront: true
+  # ri_1y_all_upfront: true
+  # ri_3y_no_upfront: true
+  # ri_3y_partial_upfront: true
+  ri_3y_all_upfront: true
+  # sp_compute_1y: true
+  # sp_compute_3y: true
+  # sp_instance_1y: true
+  sp_instance_3y: true
 
 # 区域列表（必填）
 regions:
