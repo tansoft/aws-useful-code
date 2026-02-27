@@ -183,7 +183,10 @@ def get_ec2_instances(region, config):
             result.update(prices)
             
             if config.get('public_ip'):
-                result['public_ip_count'] = inst.get('NetworkInfo', {}).get('Ipv4AddressesPerInterface', 0)
+                network_info = inst.get('NetworkInfo', {})
+                max_interfaces = network_info.get('MaximumNetworkInterfaces', 0)
+                ipv4_per_interface = network_info.get('Ipv4AddressesPerInterface', 0)
+                result['public_ip_count'] = max_interfaces * ipv4_per_interface
             
             results.append(result)
     except Exception as e:

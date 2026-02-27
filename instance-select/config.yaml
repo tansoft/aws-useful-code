@@ -11,8 +11,8 @@ memory_max: 16
 # 存储配置（可选）
 storage:
   # 实例存储大小，单位GB
-  size_min: 50
-  size_max: 500
+  # size_min: 50
+  # size_max: 500
   # IOPS需求（可选）
   # iops_min: 3000
   # iops_max: 10000
@@ -66,7 +66,7 @@ pricing_types:
 # 区域列表（必填）
 regions:
   - us-east-1
-  - us-west-2
+#  - us-west-2
 
 # 服务类型（可选，默认全部）：lightsail, ec2, lambda
 # services:
