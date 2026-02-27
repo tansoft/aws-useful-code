@@ -337,9 +337,9 @@ Worker:
 | updateItem | 单行多列 UpdateItem | 多行单列 (每列一行) BatchWriteItem | GET+SET | HSET | MSET |
 | getItem | 返回所有列 GetItem | Id查询返回所有行，Query | GET | HGETALL | SCAN+MGET（性能问题） |
 | getSubItem | 返回指定列 GetItem + Projection | BatchGetItem | GET+过滤(无法节省流量) | HMGET | MGET |
-| deleteItem | 单行删除 DeleteItem | 删除多行 Query+DeleteItem | DEL | DEL | Keys+DEL 多个key |
+| deleteItem | 单行删除 DeleteItem | 删除多行 Query+DeleteItem | DEL | DEL | SCAN+DEL |
 | batchGetItem | BatchGetItem | 多次Query | 多次GET | Pipeline+多次HGETALL | SCAN+MGET（性能问题） |
-| batchGetSubItem | BatchGetItem + Projection | BatchGetItem | 多次GET+过滤(无法节省流量) | Pipeline+多次HMGET | 多次getSubItem |
+| batchGetSubItem | BatchGetItem + Projection | BatchGetItem | 多次GET+过滤(无法节省流量) | Pipeline+多次HMGET | 多次GetSubItem |
 | batchPutItem | BatchWriteItem | 多次BatchWriteItem | 多次SET | Pipeline+HSET | Pipeline+双循环SET（多分区） |
 
 

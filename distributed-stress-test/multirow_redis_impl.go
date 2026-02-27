@@ -226,10 +226,22 @@ func (r *MultiRowRedisImpl) BatchPutItem(items map[string]map[string]interface{}
 
 func (r *MultiRowRedisImpl) DeleteItem(key string) error {
 	pattern := fmt.Sprintf("{%s}:*", key)
-	keys, err := r.client.Keys(r.ctx, pattern).Result()
-	if err != nil {
-		return err
+	var keys []string
+	var cursor uint64
+	
+	for {
+		var scanKeys []string
+		var err error
+		scanKeys, cursor, err = r.client.Scan(r.ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return err
+		}
+		keys = append(keys, scanKeys...)
+		if cursor == 0 {
+			break
+		}
 	}
+	
 	if len(keys) > 0 {
 		return r.client.Del(r.ctx, keys...).Err()
 	}
