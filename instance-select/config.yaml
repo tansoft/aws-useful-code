@@ -1,0 +1,46 @@
+# AWS 机型选择配置文件
+
+# CPU核心数需求（可选）
+cpu_min: 2
+cpu_max: 8
+
+# 内存需求，单位GB（可选）
+memory_min: 4
+memory_max: 16
+
+# 存储配置（可选）
+storage:
+  # 实例存储大小，单位GB
+  size_min: 50
+  size_max: 500
+  # IOPS需求（可选）
+  # iops_min: 3000
+  # iops_max: 10000
+  # 带宽需求，单位MB/s（可选）
+  # throughput_min: 125
+  # throughput_max: 1000
+
+# 网络配置（可选）
+network:
+  # PPS需求（可选）
+  # pps_min: 100000
+  # pps_max: 1000000
+  # 带宽需求，单位Gbps（可选）
+  # bandwidth_min: 1
+  # bandwidth_max: 10
+
+# 是否需要公网IP（可选，默认false）
+public_ip: false
+
+# 架构类型（可选）：x86, arm, mac
+# architecture: x86
+
+# 区域列表（必填）
+regions:
+  - us-east-1
+  - us-west-2
+
+# 服务类型（可选，默认全部）：lightsail, ec2, lambda
+# services:
+#   - ec2
+#   - lightsail
