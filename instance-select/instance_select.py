@@ -382,7 +382,7 @@ def generate_excel(results, output_file, config):
     pricing_types = config.get('pricing_types', {'ondemand': True})
     base_headers = ['服务', '实例类型', 'CPU核心数', '内存(GB)', '存储(GB)', '网络性能']
     if config.get('public_ip'):
-        base_headers.append('公网IP数量')
+        base_headers.extend(['公网IP数量', '单IP成本'])
     
     price_keys, hourly_headers, monthly_headers = [], [], []
     
@@ -446,17 +446,42 @@ def generate_excel(results, output_file, config):
             col += 1
             
             if config.get('public_ip'):
+                ip_count_col = col
                 ws.cell(row=row_idx, column=col, value=result.get('public_ip_count', 0))
+                col += 1
+                # 单IP成本列暂时留空，后面用公式填充
+                single_ip_cost_col = col
                 col += 1
             
             hourly_col_start = col
+            ondemand_hourly_col = col if pricing_types.get('ondemand') else None
+            
             for price_key in price_keys:
                 ws.cell(row=row_idx, column=col, value=result.get(price_key, 0))
                 col += 1
             
+            # 填充单IP成本公式
+            if config.get('public_ip') and ondemand_hourly_col:
+                def col_letter(col_num):
+                    if col_num <= 26:
+                        return chr(64 + col_num)
+                    else:
+                        return chr(64 + (col_num - 1) // 26) + chr(64 + (col_num - 1) % 26 + 1)
+                
+                ondemand_col_letter = col_letter(ondemand_hourly_col)
+                ip_count_col_letter = col_letter(ip_count_col)
+                ws.cell(row=row_idx, column=single_ip_cost_col, 
+                       value=f"={ondemand_col_letter}{row_idx}/{ip_count_col_letter}{row_idx}")
+            
             for i in range(len(price_keys)):
-                col_letter = chr(64 + hourly_col_start + i) if hourly_col_start + i <= 26 else f"A{chr(64 + hourly_col_start + i - 26)}"
-                ws.cell(row=row_idx, column=col, value=f"={col_letter}{row_idx}*730")
+                def col_letter(col_num):
+                    if col_num <= 26:
+                        return chr(64 + col_num)
+                    else:
+                        return chr(64 + (col_num - 1) // 26) + chr(64 + (col_num - 1) % 26 + 1)
+                
+                col_letter_str = col_letter(hourly_col_start + i)
+                ws.cell(row=row_idx, column=col, value=f"={col_letter_str}{row_idx}*730")
                 col += 1
         
         for col in range(1, len(headers) + 1):
