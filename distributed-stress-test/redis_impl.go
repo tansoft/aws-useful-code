@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -205,9 +204,7 @@ func (r *RedisImpl) BatchGetSubItem(keys []string, columns []string) ([]map[stri
 func (r *RedisImpl) processValue(v interface{}) interface{} {
 	switch val := v.(type) {
 	case float64:
-		data := make([]byte, int(val))
-		rand.Read(data)
-		return data
+		return getRandomData(int(val))
 	default:
 		return v
 	}

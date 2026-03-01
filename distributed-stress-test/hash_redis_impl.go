@@ -79,14 +79,15 @@ func NewHashRedisDB(region, tableName string) (*HashRedisImpl, error) {
 
 func (r *HashRedisImpl) processValue(v interface{}) string {
 	switch val := v.(type) {
+	case float64:
+		return string(getRandomData(int(val)))
 	case int:
-		data := make([]byte, val)
-		return string(data)
+		return string(getRandomData(val))
 	case string:
 		return val
 	default:
-		jsonData, _ := sonic.MarshalString(v)
-		return jsonData
+		//Redis HSET 可以直接存储字符串，其他情况转为字符串
+		return fmt.Sprintf("%v", v)
 	}
 }
 

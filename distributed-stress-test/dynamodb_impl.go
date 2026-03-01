@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -16,7 +15,6 @@ import (
 type DynamoDBImpl struct {
 	client    *dynamodb.DynamoDB
 	tableName string
-	dataCache map[int][]byte // 预生成数据缓存
 }
 
 func NewDynamoDB(region, tableName string) (*DynamoDBImpl, error) {
@@ -47,18 +45,9 @@ func NewDynamoDB(region, tableName string) (*DynamoDBImpl, error) {
 		return nil, err
 	}
 
-	// 预生成常用大小的数据
-	dataCache := make(map[int][]byte)
-	for _, size := range []int{100, 1000, 8000, 10000, 50000, 100000} {
-		data := make([]byte, size)
-		rand.Read(data)
-		dataCache[size] = data
-	}
-
 	return &DynamoDBImpl{
 		client:    dynamodb.New(sess),
 		tableName: tableName,
-		dataCache: dataCache,
 	}, nil
 }
 
@@ -222,14 +211,7 @@ func (d *DynamoDBImpl) toAttributeValue(v interface{}) *dynamodb.AttributeValue 
 	case string:
 		return &dynamodb.AttributeValue{S: aws.String(val)}
 	case float64:
-		size := int(val)
-		// 使用缓存数据，避免每次生成随机数
-		if cached, ok := d.dataCache[size]; ok {
-			return &dynamodb.AttributeValue{B: cached}
-		}
-		data := make([]byte, size)
-		rand.Read(data)
-		return &dynamodb.AttributeValue{B: data}
+		return &dynamodb.AttributeValue{B: getRandomData(int(val))}
 	default:
 		return &dynamodb.AttributeValue{S: aws.String(fmt.Sprintf("%v", val))}
 	}

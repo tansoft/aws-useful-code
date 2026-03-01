@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -263,12 +262,10 @@ func (r *MultiRowRedisImpl) BatchGetSubItem(keys []string, columns []string) ([]
 func (r *MultiRowRedisImpl) processValue(v interface{}) interface{} {
 	switch val := v.(type) {
 	case float64:
-		data := make([]byte, int(val))
-		rand.Read(data)
-		return data
+		return getRandomData(int(val))
 	default:
-		jsonData, _ := sonic.Marshal(v)
-		return jsonData
+		// Redis MSET/SET 可以直接存储字符串和字节数组
+		return v
 	}
 }
 
