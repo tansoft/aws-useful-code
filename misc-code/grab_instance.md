@@ -21,6 +21,7 @@ aws configure  # 确保 AWS credentials 已配置
 | `--interval N` | 重试间隔秒数（默认 10） |
 | `--max-retries N` | 最大重试次数，0 为无限（默认 0） |
 | `--dry-run` | 仅搜索/验证，不实际执行 |
+| `--include-local-zones` | 包含 Local Zones（如 `use1-atl2-az1`）在搜索范围内 |
 
 ## 模式 1：On-Demand（重试抢占）
 
@@ -64,6 +65,9 @@ python grab_instance.py --region us-east-1 --interval 30 capacity-block --durati
 
 # 后台持续抢，最多重试 500 次
 python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --interval 60 --max-retries 500 capacity-block --duration 24 --auto-purchase
+
+# 搜索 Local Zone 中的 capacity-block
+python grab_instance.py --region us-east-1 --az use1-atl2-az1 --include-local-zones capacity-block --duration 24
 ```
 
 子命令参数：

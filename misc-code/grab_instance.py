@@ -12,17 +12,18 @@ from botocore.exceptions import ClientError
 
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
-def get_all_azs(ec2):
+def get_all_azs(ec2, include_local_zones=False):
     """Get all available AZs as list of (az_name, az_id)."""
     resp = ec2.describe_availability_zones(
-        Filters=[{"Name": "state", "Values": ["available"]}]
+        Filters=[{"Name": "state", "Values": ["available"]}],
+        AllAvailabilityZones=include_local_zones
     )
     return [(z["ZoneName"], z["ZoneId"]) for z in resp["AvailabilityZones"]]
 
 
-def resolve_azs(ec2, az_name_or_id=None):
+def resolve_azs(ec2, az_name_or_id=None, include_local_zones=False):
     """Resolve to list of (az_name, az_id). If az is None, return all AZs."""
-    all_azs = get_all_azs(ec2)
+    all_azs = get_all_azs(ec2, include_local_zones)
     if not az_name_or_id:
         return all_azs
     for z in all_azs:
@@ -57,7 +58,7 @@ def get_latest_ami(ec2):
 
 def run_ondemand(args):
     ec2 = boto3.client("ec2", region_name=args.region)
-    azs = resolve_azs(ec2, args.az)
+    azs = resolve_azs(ec2, args.az, args.include_local_zones)
     if not azs:
         sys.exit(f"ERROR: Cannot resolve AZ '{args.az}' in region {args.region}")
     print(f"AZs: {', '.join(f'{n} ({i})' for n, i in azs)}")
@@ -112,7 +113,7 @@ def run_ondemand(args):
 
 def run_capacity_block(args):
     ec2 = boto3.client("ec2", region_name=args.region)
-    azs = resolve_azs(ec2, args.az)
+    azs = resolve_azs(ec2, args.az, args.include_local_zones)
     if not azs:
         sys.exit(f"ERROR: Cannot resolve AZ '{args.az}' in region {args.region}")
     az_names = {n for n, _ in azs}
@@ -309,6 +310,7 @@ Examples:
     parser.add_argument("--interval", type=int, default=10, help="Retry interval seconds (default: 10)")
     parser.add_argument("--max-retries", type=int, default=0, help="Max retries, 0=unlimited")
     parser.add_argument("--dry-run", action="store_true", help="Dry run / search only")
+    parser.add_argument("--include-local-zones", action="store_true", help="Include Local Zones in search")
 
     sub = parser.add_subparsers(dest="mode", required=True)
 
