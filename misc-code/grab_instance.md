@@ -1,6 +1,6 @@
 # grab_instance.py — 抢占 GPU 实例
 
-支持三种模式获取 GPU 资源：On-Demand 重试抢占、EC2 Capacity Blocks 预留、SageMaker Training Plans 预留。默认机型 `p5.4xlarge`，可通过 `--instance-type` 指定其他机型。
+支持四种模式获取 GPU 资源：On-Demand 重试抢占、Spot 竞价实例、EC2 Capacity Blocks 预留、SageMaker Training Plans 预留。默认机型 `p5.4xlarge`，可通过 `--instance-type` 指定其他机型。
 
 ## 前置条件
 
@@ -49,7 +49,38 @@ python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --dry-run
 | `--subnet` | Subnet ID（不指定则自动查找该 AZ 下的 subnet） |
 | `--key-name` | EC2 Key Pair 名称 |
 
-## 模式 2：EC2 Capacity Blocks
+## 模式 2：Spot（竞价实例）
+
+以更低价格申请 Spot 实例，容量不足时持续重试。适合可中断的工作负载。
+
+```bash
+# 基本用法（默认 p5.4xlarge，指定 AZ）
+python grab_instance.py --region us-east-1 --az use1-az6 spot
+
+# 指定机型，遍历所有 AZ，等待实例启动
+python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge spot --wait
+
+# 指定最高出价（美元/小时）
+python grab_instance.py --region us-east-1 --az use1-az6 spot --spot-price 10.0 --wait
+
+# 快速重试，指定 key pair
+python grab_instance.py --region us-east-1 --interval 3 spot --key-name mykey --wait
+
+# dry-run 验证参数
+python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --dry-run spot
+```
+
+子命令参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--ami` | AMI ID（不指定则自动查找 Amazon Linux 2023） |
+| `--subnet` | Subnet ID（不指定则自动查找该 AZ 下的 subnet） |
+| `--key-name` | EC2 Key Pair 名称 |
+| `--spot-price` | 最高出价（美元/小时），不指定则使用 On-Demand 价格 |
+| `--wait` | 等待 Spot 请求完成并显示实例 ID |
+
+## 模式 3：EC2 Capacity Blocks
 
 预留未来时段的 GPU 容量（1 天 ~ 182 天），需提前购买，到时间后启动实例并指定 reservation ID。
 
@@ -78,7 +109,7 @@ python grab_instance.py --region us-east-1 --az use1-atl2-az1 --include-local-zo
 | `--duration N` | 预留时长，单位小时（默认 24） |
 | `--auto-purchase` | 自动购买第一个可用 offering，不交互确认 |
 
-## 模式 3：SageMaker Training Plans
+## 模式 4：SageMaker Training Plans
 
 预留 SageMaker 层面的 GPU 容量，用于 Training Job 或 HyperPod 集群。脚本自动为机型添加 `ml.` 前缀（如 `p5.4xlarge` → `ml.p5.4xlarge`）。
 
@@ -106,19 +137,21 @@ python grab_instance.py --region us-east-1 --interval 30 --max-retries 200 train
 | `--plan-name` | Training Plan 名称（不指定则自动生成） |
 | `--auto-purchase` | 自动购买第一个可用 offering |
 
-## 三种模式对比
+## 四种模式对比
 
-| | On-Demand | Capacity Block | Training Plan |
-|---|---|---|---|
-| 获取方式 | 立即启动，容量不足重试 | 预留未来时段 | 预留 SageMaker 容量 |
-| 计费 | 按秒计费 | 预付整段费用 | 预付整段费用 |
-| 适用场景 | 临时需求、短期任务 | 确定性短期 GPU 需求 | SageMaker 训练/HyperPod |
-| 预留时长 | 无 | 1 天 ~ 182 天 | 1 天 ~ 182 天 |
-| 可取消 | 随时终止 | 不可取消 | 不可取消 |
+| | On-Demand | Spot | Capacity Block | Training Plan |
+|---|---|---|---|---|
+| 获取方式 | 立即启动，容量不足重试 | 竞价启动，可能中断 | 预留未来时段 | 预留 SageMaker 容量 |
+| 计费 | 按秒计费 | 按秒计费（折扣 50-90%） | 预付整段费用 | 预付整段费用 |
+| 适用场景 | 临时需求、短期任务 | 可中断工作负载 | 确定性短期 GPU 需求 | SageMaker 训练/HyperPod |
+| 预留时长 | 无 | 无 | 1 天 ~ 182 天 | 1 天 ~ 182 天 |
+| 可取消 | 随时终止 | 随时终止（可能被中断） | 不可取消 | 不可取消 |
 
 ## Tips
 
 - 抢资源建议调小 `--interval`（如 3-5 秒），配合 `--auto-purchase` 全自动
+- Spot 实例价格通常比 On-Demand 便宜 50-90%，适合容错性高的任务
+- Spot 请求使用 `--wait` 参数可等待实例启动并获取实例 ID
 - 先用 `--dry-run` 确认参数和可用 offering 再正式购买
 - 不指定 `--az` 时会搜索/尝试所有可用区，增加命中概率
 - Capacity Block 和 Training Plan 购买后不可取消，注意确认

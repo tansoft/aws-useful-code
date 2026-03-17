@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Script to grab GPU instances via On-Demand, EC2 Capacity Blocks, or SageMaker Training Plans."""
+"""Script to grab GPU instances via On-Demand, Spot, EC2 Capacity Blocks, or SageMaker Training Plans."""
 
 import argparse
 import json
@@ -109,7 +109,81 @@ def run_ondemand(args):
         time.sleep(args.interval)
 
 
-# ── Mode 2: EC2 Capacity Blocks ────────────────────────────────────────────
+# ── Mode 2: Spot Instances ─────────────────────────────────────────────────
+
+def run_spot(args):
+    ec2 = boto3.client("ec2", region_name=args.region)
+    azs = resolve_azs(ec2, args.az, args.include_local_zones)
+    if not azs:
+        sys.exit(f"ERROR: Cannot resolve AZ '{args.az}' in region {args.region}")
+    print(f"AZs: {', '.join(f'{n} ({i})' for n, i in azs)}")
+
+    ami_id = args.ami or get_latest_ami(ec2)
+    if not ami_id:
+        sys.exit("ERROR: Cannot find AMI. Specify --ami manually.")
+    print(f"AMI: {ami_id}")
+
+    attempt = 0
+    while True:
+        for az_name, az_id in azs:
+            attempt += 1
+            subnet_id = args.subnet or find_subnet_in_az(ec2, az_name)
+            try:
+                print(f"\n[Attempt {attempt}] Requesting Spot {args.instance_type} in {az_name}...")
+                launch_spec = {
+                    "ImageId": ami_id,
+                    "InstanceType": args.instance_type,
+                    "Placement": {"AvailabilityZone": az_name},
+                }
+                if subnet_id:
+                    launch_spec["SubnetId"] = subnet_id
+                if args.key_name:
+                    launch_spec["KeyName"] = args.key_name
+
+                params = {
+                    "InstanceCount": 1,
+                    "Type": "one-time",
+                    "LaunchSpecification": launch_spec,
+                    "DryRun": args.dry_run,
+                    "TagSpecifications": [{"ResourceType": "spot-instances-request",
+                                           "Tags": [{"Key": "Name", "Value": f"spot-{args.instance_type}-{az_name}"}]}],
+                }
+                if args.spot_price:
+                    params["SpotPrice"] = args.spot_price
+
+                resp = ec2.request_spot_instances(**params)
+                request_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+                print(f"SUCCESS! Spot request: {request_id}")
+                
+                # Wait for fulfillment
+                if not args.dry_run and args.wait:
+                    print("Waiting for spot request fulfillment...")
+                    waiter = ec2.get_waiter("spot_instance_request_fulfilled")
+                    waiter.wait(SpotInstanceRequestIds=[request_id])
+                    resp = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+                    instance_id = resp["SpotInstanceRequests"][0].get("InstanceId")
+                    if instance_id:
+                        print(f"Instance launched: {instance_id}")
+                return
+            except ClientError as e:
+                code = e.response["Error"]["Code"]
+                msg = e.response["Error"]["Message"]
+                if code == "DryRunOperation":
+                    print("Dry run succeeded - request would have been accepted.")
+                    return
+                elif code in ("InsufficientInstanceCapacity", "SpotMaxPriceTooLow", "Unsupported"):
+                    print(f"  {code}: {msg}")
+                else:
+                    sys.exit(f"  ERROR [{code}]: {msg}")
+
+            if args.max_retries and attempt >= args.max_retries:
+                sys.exit(f"\nMax retries ({args.max_retries}) reached.")
+
+        print(f"  Retrying all AZs in {args.interval}s...")
+        time.sleep(args.interval)
+
+
+# ── Mode 3: EC2 Capacity Blocks ────────────────────────────────────────────
 
 def run_capacity_block(args):
     ec2 = boto3.client("ec2", region_name=args.region)
@@ -199,7 +273,7 @@ def run_capacity_block(args):
             time.sleep(args.interval)
 
 
-# ── Mode 3: SageMaker Training Plans ───────────────────────────────────────
+# ── Mode 4: SageMaker Training Plans ───────────────────────────────────────
 
 def run_training_plan(args):
     sm = boto3.client("sagemaker", region_name=args.region)
@@ -286,7 +360,7 @@ def run_training_plan(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Grab GPU instances via On-Demand, Capacity Blocks, or SageMaker Training Plans",
+        description="Grab GPU instances via On-Demand, Spot, Capacity Blocks, or SageMaker Training Plans",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -295,6 +369,12 @@ Examples:
 
   # On-Demand with custom instance type, all AZs
   %(prog)s ondemand --region us-east-1 --instance-type p5e.48xlarge
+
+  # Spot instance request
+  %(prog)s spot --region us-east-1 --az use1-az5 --wait
+
+  # Spot with max price
+  %(prog)s spot --region us-east-1 --instance-type p5.48xlarge --spot-price 10.0
 
   # Search & purchase EC2 Capacity Block
   %(prog)s capacity-block --region us-east-1 --az use1-az5 --duration 24
@@ -320,6 +400,14 @@ Examples:
     p_od.add_argument("--subnet", help="Subnet ID (auto-detect if omitted)")
     p_od.add_argument("--key-name", help="EC2 key pair name")
 
+    # Spot
+    p_spot = sub.add_parser("spot", help="Spot instance request with retry loop")
+    p_spot.add_argument("--ami", help="AMI ID (auto-detect if omitted)")
+    p_spot.add_argument("--subnet", help="Subnet ID (auto-detect if omitted)")
+    p_spot.add_argument("--key-name", help="EC2 key pair name")
+    p_spot.add_argument("--spot-price", help="Max spot price (default: on-demand price)")
+    p_spot.add_argument("--wait", action="store_true", help="Wait for spot request fulfillment")
+
     # Capacity Block
     p_cb = sub.add_parser("capacity-block", help="EC2 Capacity Block reservation")
     p_cb.add_argument("--instance-count", type=int, default=1, help="Number of instances (default: 1)")
@@ -339,6 +427,8 @@ Examples:
 
     if args.mode == "ondemand":
         run_ondemand(args)
+    elif args.mode == "spot":
+        run_spot(args)
     elif args.mode == "capacity-block":
         run_capacity_block(args)
     elif args.mode == "training-plan":
