@@ -11,11 +11,13 @@ aws configure  # 确保 AWS credentials 已配置
 
 确认目标机型的 Service Quota 足够（EC2 控制台 → Service Quotas → Running On-Demand P instances）。
 
+注意 P 系列机型，建议使用 EC2 Capacity Blocks、SageMaker Training Plans、Spot 方式申请。
+
 ## 通用参数
 
 | 参数 | 说明 |
 |------|------|
-| `--region` | AWS 区域（必填，如 `us-east-1`） |
+| `--region` | AWS 区域（必填，如 `us-east-1`）。支持多区域逗号分隔（如 `us-east-1,us-west-2,eu-west-1`），会挨个重试 |
 | `--az` | 可用区名称或 ID（如 `us-east-1e` 或 `use1-az6`）。不指定则遍历所有 AZ |
 | `--instance-type` | EC2 实例类型（默认 `p5.4xlarge`，如 `p5e.48xlarge`、`p4d.24xlarge`） |
 | `--interval N` | 重试间隔秒数（默认 10） |
@@ -28,17 +30,20 @@ aws configure  # 确保 AWS credentials 已配置
 容量不足时持续重试，直到成功启动实例。
 
 ```bash
-# 基本用法（默认 p5.4xlarge，指定 AZ）
-python grab_instance.py --region us-east-1 --az use1-az6 ondemand
+# 基本用法（指定 AZ）
+python grab_instance.py --region us-east-1 --instance-type g5.4xlarge --az use1-az6 ondemand
 
 # 指定机型，遍历所有 AZ
-python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge ondemand
+python grab_instance.py --region us-east-1 --instance-type g5.4xlarge ondemand
+
+# 多区域重试，自动在 3 个区域间轮询
+python grab_instance.py --region us-east-1,us-west-2,eu-west-1 --instance-type g5.4xlarge ondemand
 
 # 指定 key pair，3 秒间隔快速重试
 python grab_instance.py --region us-east-1 --az use1-az6 --interval 3 ondemand --key-name mykey
 
 # dry-run 验证参数
-python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --dry-run ondemand
+python grab_instance.py --region us-east-1 --instance-type g5.4xlarge --dry-run ondemand
 ```
 
 子命令参数：
@@ -59,6 +64,9 @@ python grab_instance.py --region us-east-1 --az use1-az6 spot
 
 # 指定机型，遍历所有 AZ，等待实例启动
 python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge spot --wait
+
+# 多区域重试 Spot 实例
+python grab_instance.py --region us-east-1,us-west-2,ap-northeast-1 --instance-type p5.48xlarge spot --wait
 
 # 指定最高出价（美元/小时）
 python grab_instance.py --region us-east-1 --az use1-az6 spot --spot-price 10.0 --wait
@@ -91,6 +99,9 @@ python grab_instance.py --region us-east-1 --az use1-az6 --dry-run capacity-bloc
 # 指定机型，遍历所有 AZ
 python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge --dry-run capacity-block --duration 48
 
+# 多区域搜索 Capacity Block
+python grab_instance.py --region us-east-1,us-west-2 --instance-type p5.48xlarge capacity-block --duration 24 --auto-purchase
+
 # 自动购买第一个可用 offering（配合重试循环抢资源）
 python grab_instance.py --region us-east-1 --interval 30 capacity-block --duration 24 --auto-purchase
 
@@ -99,6 +110,9 @@ python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --interva
 
 # 搜索 Local Zone 中的 capacity-block
 python grab_instance.py --region us-east-1 --az use1-atl2-az1 --include-local-zones capacity-block --duration 24
+
+# p5.4x 常用配置
+python grab_instance.py --region us-east-1,us-east-2,us-west-2,eu-west-2,ap-northeast-1,ap-south-1,ap-southeast-3,ap-southeast-2,sa-east-1 --instance-type p5.4xlarge capacity-block --duration 24 --auto-purchase
 ```
 
 子命令参数：
@@ -119,6 +133,9 @@ python grab_instance.py --region us-east-1 --dry-run training-plan --duration 48
 
 # 指定机型
 python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --dry-run training-plan --duration 72
+
+# 多区域搜索 Training Plan
+python grab_instance.py --region us-east-1,eu-west-1,ap-northeast-1 --instance-type p5.48xlarge training-plan --duration 48 --auto-purchase
 
 # 为 HyperPod 集群购买，指定 plan 名称
 python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge training-plan --duration 168 --sm-target hyperpod-cluster --plan-name my-plan
@@ -150,6 +167,7 @@ python grab_instance.py --region us-east-1 --interval 30 --max-retries 200 train
 ## Tips
 
 - 抢资源建议调小 `--interval`（如 3-5 秒），配合 `--auto-purchase` 全自动
+- 使用多区域（如 `--region us-east-1,us-west-2,eu-west-1`）可大幅提高获取资源成功率
 - Spot 实例价格通常比 On-Demand 便宜 50-90%，适合容错性高的任务
 - Spot 请求使用 `--wait` 参数可等待实例启动并获取实例 ID
 - 先用 `--dry-run` 确认参数和可用 offering 再正式购买
