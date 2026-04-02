@@ -1,0 +1,81 @@
+[
+  {
+    "description": "Get city set list",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "get_cityset"
+  },
+  {
+    "description": "Get country list. If no cityset is specified, all countries will be returned. For different citysets, the country list must be requested again",
+    "inputSchema": {
+      "properties": {
+        "cityset": {
+          "description": "cityset id returned by get_cityset",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_country"
+  },
+  {
+    "description": "Get city list",
+    "inputSchema": {
+      "properties": {
+        "cityset": {
+          "description": "cityset id returned by get_cityset",
+          "type": "integer"
+        },
+        "country": {
+          "description": "Specify the code of country returned by get_country",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": ["cityset","country"]
+    },
+    "name": "get_city"
+  },
+  {
+    "description": "Get asn list",
+    "inputSchema": {
+      "properties": {
+        "cityset": {
+          "description": "cityset id returned by get_cityset",
+          "type": "integer"
+        },
+        "country": {
+          "description": "Specify the code of country returned by get_country",
+          "type": "string"
+        },
+        "city": {
+          "description": "Specify the id of city returned by get_city",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": ["cityset","country","city"]
+    },
+    "name": "get_asn"
+  },
+  {
+    "description": "Get performance data",
+    "inputSchema": {
+      "properties": {
+        "src": {
+          "description": "Specify the cityIds corresponding to the cityset id returned by get_cityset, Use commas to separate multiple items",
+          "type": "string"
+        },
+        "dist": {
+          "description": "Specify the cityIds corresponding to the asn returned by get_asn, filter asnType = 'isp', Use commas to separate multiple items",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": ["src","dist"]
+    },
+    "name": "get_performance"
+  }
+]
