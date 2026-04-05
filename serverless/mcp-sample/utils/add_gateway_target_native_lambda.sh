@@ -22,10 +22,10 @@ MCP_SERVER=${1}
 PROJECT=${2:-"base-auth"}
 
 CURPATHCURPATH=$(cd `dirname "${BASH_SOURCE[0]}"`;pwd)
-source "${CURPATHCURPATH}/../.${PROJECT}-cognito-s2s.txt"
+source "${CURPATHCURPATH}/../.${PROJECT}-config.txt"
 
 if [[ -z "$REGION" || -z "$GATEWAY_ID" ]]; then
-    echo "错误: .${PROJECT}-cognito-s2s.txt 配置文件中缺少必要参数，请先配置 cognito，再配置 agentcore_gateway，再运行本程序！"
+    echo "错误: .${PROJECT}-config.txt 配置文件中缺少必要参数，请先配置 cognito，再配置 agentcore_gateway，再运行本程序！"
     exit 1
 fi
 

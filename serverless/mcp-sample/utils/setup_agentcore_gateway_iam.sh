@@ -1,17 +1,12 @@
 #!/bin/bash
-# "Usage: ./setup_agentcore_gateway.sh <name>"
-# 创建 AgentCore Gateway（不包含 Target）
+# "Usage: ./setup_agentcore_gateway_iam.sh <name> <region>"
+# 创建 IAM 验证的 AgentCore Gateway（不包含 Target）
 # Target 将由各个 Provider 单独添加
 
 PROJECT=${1:-"base-auth"}
+REGION=${2:-"us-east-1"}
 
 CURPATHCURPATH=$(cd `dirname "${BASH_SOURCE[0]}"`;pwd)
-source "${CURPATHCURPATH}/../.${PROJECT}-config.txt"
-
-if [[ -z "$REGION" || -z "$POOL_ID" || -z "$CLIENT_ID" || -z "$DISCOVERY_URL" ]]; then
-    echo "错误: .${PROJECT}-config.txt 配置文件中缺少必要参数"
-    exit 1
-fi
 
 DEFAULT_ROLE="agentcore-gateway-lambda-target-default-role"
 
@@ -78,8 +73,6 @@ create_gateway() {
     echo "============================================================"
     echo
     echo "Region: $REGION"
-    echo "Cognito Pool ID: $POOL_ID"
-    echo "Client ID: $CLIENT_ID"
     echo
 
     echo "步骤 1: 创建 Gateway IAM 角色..."
@@ -97,9 +90,8 @@ create_gateway() {
         --name "$PROJECT" \
         --role-arn "$role_arn" \
         --protocol-type "MCP" \
-        --authorizer-type "CUSTOM_JWT" \
-        --authorizer-configuration "{\"customJWTAuthorizer\":{\"allowedClients\":[\"${CLIENT_ID}\"],\"discoveryUrl\":\"${DISCOVERY_URL}\"}}" \
-        --description "Gateway for $PROJECT" \
+        --authorizer-type "AWS_IAM" \
+        --description "IAM Gateway for $PROJECT" \
         --region "$REGION" \
         --query 'gatewayId' --output text 2>&1)
     

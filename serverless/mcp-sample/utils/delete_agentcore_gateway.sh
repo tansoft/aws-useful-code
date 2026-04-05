@@ -6,7 +6,7 @@ PROJECT=${1:-"base-auth"}
 set -e
 
 CURPATH=$(cd `dirname "${BASH_SOURCE[0]}"`;pwd)
-CONFIG_FILE="${CURPATH}/../.${PROJECT}-cognito-s2s.txt"
+CONFIG_FILE="${CURPATH}/../.${PROJECT}-config.txt"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo "错误: 配置文件 $CONFIG_FILE 不存在"

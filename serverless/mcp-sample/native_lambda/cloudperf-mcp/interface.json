@@ -1,8 +1,25 @@
 [
   {
-    "description": "Get city set list",
+    "description": "城市集合列表，便于对多组cityIds进行查询，id为对应集合的ID，例如：cityset id 27，名字是：AWS Asia，代表AWS亚洲区的多个cityIds",
     "inputSchema": {
       "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "id": {
+          "description": "对应集合的ID",
+          "type": "integer"
+        },
+        "name": {
+          "description": "集合对应的名字",
+          "type": "string"
+        },
+        "cityIds": {
+          "description": "集合里多个cityIds，用于最后get_performance查询",
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "name": "get_cityset"
@@ -39,7 +56,7 @@
     "name": "get_city"
   },
   {
-    "description": "Get asn list",
+    "description": "获取ASN列表。注意：city参数应使用get_city返回的name字段，城市名称。",
     "inputSchema": {
       "properties": {
         "cityset": {
@@ -51,7 +68,7 @@
           "type": "string"
         },
         "city": {
-          "description": "Specify the id of city returned by get_city",
+          "description": "使用get_city返回的城市数据中的name字段，城市名称。如果没有强制指定城市，使用'A'代表所有这个国家中的所有城市",
           "type": "string"
         }
       },
@@ -61,15 +78,15 @@
     "name": "get_asn"
   },
   {
-    "description": "Get performance data",
+    "description": "获取网络性能详细数据，src和dist参数都需要逗号分隔的cityIds数据，如：1213020226,1643985005",
     "inputSchema": {
       "properties": {
         "src": {
-          "description": "Specify the cityIds corresponding to the cityset id returned by get_cityset, Use commas to separate multiple items",
+          "description": "get_cityset中指定cityset中的cityIds数据，逗号分隔，如：1213020226,1643985005",
           "type": "string"
         },
         "dist": {
-          "description": "Specify the cityIds corresponding to the asn returned by get_asn, filter asnType = 'isp', Use commas to separate multiple items",
+          "description": "get_asn中的cityIds数据，默认只使用 asnType = 'isp' 的数据，如果有指定其他asnType则进行相应过滤",
           "type": "string"
         }
       },

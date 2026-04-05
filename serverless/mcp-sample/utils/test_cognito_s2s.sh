@@ -4,7 +4,7 @@ PROJECT=${1:-"base-auth"}
 
 echo "Retrieving access token for ${PROJECT}..."
 CURPATH=$(cd `dirname "${BASH_SOURCE[0]}"`;pwd)
-source "${CURPATH}/../.${PROJECT}-cognito-s2s.txt"
+source "${CURPATH}/../.${PROJECT}-config.txt"
 TOKEN_RESPONSE=$(curl -s -X POST "$TOKEN_ENDPOINT" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -u "${CLIENT_ID}:${CLIENT_SECRET}" \

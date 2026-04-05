@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import boto3
@@ -5,29 +6,71 @@ import boto3
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-cloudperf_api_lambda="CloudperfStack-apiC8550315-XlWq8GDTE8k0"
+secrets_client = boto3.client('secretsmanager')
+lambda_client = boto3.client('lambda')
+
+SECRET_NAME = os.environ.get('CLOUDPERF_SECRET', '')
+CLOUDPERF_API_LAMBDA = os.environ.get('CLOUDPERF_API_LAMBDA', '')
+
+def get_secret():
+    response = secrets_client.get_secret_value(SecretId=SECRET_NAME)
+    return json.loads(response['SecretString'])
+
+secrets = get_secret()
+CLOUDPERF_USERNAME = secrets.get('username', '')
+CLOUDPERF_PASSWORD = secrets.get('password', '')
+CLOUDPERF_CPTOKEN = secrets.get('cptoken', '')
+
+def call_cloudperf(fn, params):
+    alb_payload = {
+        "httpMethod": "GET",
+        "path": "/api/" + fn,
+        "queryStringParameters": params,
+        "headers": {
+            "cookie": "cp_token=" + CLOUDPERF_CPTOKEN,
+            "user-agent": "mcp-client",
+            "host": "mcp.cloudperf.vpc",
+        },
+        "body": None,
+        "isBase64Encoded": False
+    }
+
+    response = lambda_client.invoke(
+        FunctionName=CLOUDPERF_API_LAMBDA,
+        InvocationType='RequestResponse',
+        Payload=json.dumps(alb_payload)
+    )
+    #if response['StatusCode'] != 200:
+    #    return response['StatusCode']
+    return json.loads(response['Payload'].read())
+
+def call_cloudperf_with_token(fn, params):
+    global CLOUDPERF_CPTOKEN
+    if CLOUDPERF_CPTOKEN == '':
+        print('need login first...')
+        ret = call_cloudperf('login',{'username': CLOUDPERF_USERNAME, 'password': CLOUDPERF_PASSWORD})
+        if ret['statusCode'] != 200:
+            return ret
+        ret = json.loads(ret['body'])
+        CLOUDPERF_CPTOKEN = f"{ret['token']}|{ret['user']}|{ret['auth']}"
+    ret = call_cloudperf(fn, params)
+    if ret['statusCode'] == 403:
+        print('token expire...')
+        CLOUDPERF_CPTOKEN = ''
+        return call_cloudperf_with_token(fn, params)
+    ret = json.loads(ret['body'])
+    return ret
 
 def lambda_handler(event, context):
     try:
         print(event)
-        limit = event.get("limit", 50)
+        # limit = event.get("limit", 50)
         # Get the tool name from the context
         delimiter = "___"
         org_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
-        tool_name = org_tool_name[org_tool_name.index(delimiter) + len(delimiter):]
+        tool_name = org_tool_name[org_tool_name.index(delimiter) + len(delimiter)+4:] # 4="get_"
 
-        if tool_name == 'ask_ai':
-            question = event.get("question", "python中如何打印class方法?")
-
-        lambda_client = boto3.client('lambda')
-        response = lambda_client.invoke(
-            FunctionName=cloudperf_api_lambda,
-            InvocationType='RequestResponse',
-            Payload=json.dumps({"limit": limit})
-        )
-    
-        result = json.loads(response['Payload'].read())
-        return result
+        return call_cloudperf_with_token(tool_name, event)
     except Exception as e:
         logger.error(f"Handler error: {e!s}", exc_info=True)
         return {"error": f"Failed to fetch: {e!s}"}

@@ -118,7 +118,7 @@ OUTPUT="
 echo "$OUTPUT"
 
 # Write to file
-cat > "${CURPATH}/../.${PROJECT}-cognito-s2s.txt" << EOFCONFIG
+cat > "${CURPATH}/../.${PROJECT}-config.txt" << EOFCONFIG
 $OUTPUT
 POOL_ID=$POOL_ID
 REGION=$REGION
@@ -133,12 +133,12 @@ ACCESS_TOKEN=$ACCESS_TOKEN
 EOFCONFIG
 
 echo ""
-echo "✓ Configuration saved to .${PROJECT}-cognito-s2s.txt"
+echo "✓ Configuration saved to .${PROJECT}-config.txt"
 
 echo ""
 echo "================================================"
 echo "Setup complete! Use these files:"
-echo "  cat .${PROJECT}-cognito-s2s.txt: Full configuration"
+echo "  cat .${PROJECT}-config.txt: Full configuration"
 echo "  ./utils/test_cognito_s2s.sh ${PROJECT}: Test ${PROJECT} token retrieval"
 echo "  ./utils/delete_cognito_s2s.sh ${PROJECT}: Delete ${PROJECT} resources"
 echo "================================================"

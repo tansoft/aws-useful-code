@@ -24,6 +24,13 @@
                 "lambda:InvokeFunction"
             ],
             "Resource": "arn:aws:lambda:*:*:function:CloudperfStack-*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "secretsmanager:GetSecretValue"
+            ],
+            "Resource": "arn:aws:secretsmanager:*:*:secret:cloudperf-*"
         }
     ]
 }
