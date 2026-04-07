@@ -1,0 +1,10 @@
+Introduction to Machine Learning
+Machine learning is a subset of artificial intelligence.
+It focuses on building systems that learn from data.
+Supervised learning uses labeled training data.
+Unsupervised learning finds patterns without labels.
+Reinforcement learning uses rewards and penalties.
+Deep learning uses neural networks with many layers.
+Transformers revolutionized natural language processing.
+BERT and GPT are popular transformer models.
+RAG combines retrieval with generation for better accuracy.

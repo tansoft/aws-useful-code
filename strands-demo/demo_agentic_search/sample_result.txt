@@ -1,0 +1,275 @@
+agentic_search user$
+agentic_search user$ python agent.py ./files
+
+Agentic Search Agent ready. Documents folder: ./agentic_search/files
+Type your question (or 'quit' to exit):
+
+Q: 找到所有 PHP 中处理用户认证的函数
+我将帮您找到所有 PHP 中处理用户认证的函数。让我按照工作流程开始搜索。
+Tool #1: file_metadata
+我看到这是一个包含大量 PHP 文件的项目。现在让我搜索与用户认证相关的 PHP 函数。
+Tool #2: keyword_search
+现在让我使用更具体的代码搜索来查找认证相关的函数定义：
+Tool #3: code_search
+让我尝试搜索更广泛的认证相关关键词：
+Tool #4: keyword_search
+让我搜索更具体的认证函数：
+Tool #5: keyword_search
+现在让我查看具体的认证函数实现：
+Tool #6: read_file_lines
+
+Tool #7: read_file_lines
+现在让我查看更多的认证相关函数：
+Tool #8: read_file_lines
+让我查看这个函数的开始部分：
+Tool #9: read_file_lines
+现在让我查看Employee类的认证函数：
+Tool #10: read_file_lines
+让我搜索更多的认证相关函数：
+Tool #11: keyword_search
+让我查看更多的认证相关函数实现：
+Tool #12: read_file_lines
+
+Tool #13: read_file_lines
+现在让我搜索WebService的认证函数：
+Tool #14: read_file_lines
+让我搜索更多的认证和安全相关函数：
+Tool #15: keyword_search
+基于我的搜索结果，我现在可以为您总结所有在 PHP 中处理用户认证的函数。让我整理这些发现：
+
+## 所有 PHP 中处理用户认证的函数
+
+基于对文件的全面搜索，我找到了以下处理用户认证的主要函数：
+
+### 1. 客户（Customer）认证函数
+
+**文件：** `/classes/Customer.php`
+
+- **`checkPassword($idCustomer, $passwordHash)`** (第837行)
+  - 静态方法，验证客户密码哈希
+  - 检查客户ID有效性和密码匹配
+  - 使用缓存机制提高性能
+
+- **`getByEmail($email, $plaintextPassword = null, $ignoreGuest = true)`** (第457行)
+  - 通过邮箱获取客户实例，可选验证密码
+  - 使用加密服务验证明文密码
+  - 支持密码哈希升级机制
+
+- **`isLogged($withGuest = false)`** (第1374行)
+  - 检查客户是否已登录
+  - 验证会话有效性和密码匹配
+
+- **`logout()`** (第1393行)
+  - 客户登出功能
+  - 执行登出前后的钩子函数
+  - 清除cookie和会话信息
+
+- **`mylogout()`** (第1411行)
+  - 软登出，保留联盟信息
+  - 只清除客户相关信息
+
+### 2. 员工（Employee）认证函数
+
+**文件：** `/classes/Employee.php`
+
+- **`checkPassword($idEmployee, $passwordHash)`** (第358行)
+  - 静态方法，验证员工密码哈希
+  - 检查员工ID、密码和激活状态
+
+- **`getByEmail($email, $plaintextPassword = null, $activeOnly = true)`** (第285行)
+  - 通过邮箱获取员工实例，可选验证密码
+  - 包含防止密码枚举攻击的机制
+  - 支持密码哈希升级
+
+- **`isLoggedBack()`** (第439行)
+  - 检查员工是否已在后台登录
+  - 使用Symfony容器的用户提供者
+
+- **`logout()`** (第453行)
+  - 员工登出功能
+  - 清除cookie和Symfony会话
+
+### 3. Web服务认证函数
+
+**文件：** `/classes/webservice/WebserviceRequest.php`
+
+- **`authenticate()`** (第785行)
+  - Web服务API认证
+  - 验证32位认证密钥
+  - 检查密钥权限和激活状态
+
+### 4. Cookie和会话管理函数
+
+**文件：** `/classes/Cookie.php`
+
+- **`logout()`** (第247行)
+  - Cookie登出，完全销毁cookie
+  - 删除会话信息
+
+- **`mylogout()`** (第261行)
+  - 软登出，保留联盟信息
+  - 只删除客户相关cookie数据
+
+- **`registerSession(SessionInterface $session)`** (第502行)
+  - 注册用户会话
+  - 设置用户ID和会话令牌
+
+- **`isSessionAlive()`** (第547行)
+  - 检查会话是否有效和活跃
+  - 验证会话ID和令牌
+
+- **`deleteSession()`** (第525行)
+  - 删除会话记录
+
+### 5. 密码重置令牌函数
+
+**Customer类中：**
+- **`stampResetPasswordToken()`** (第1521行) - 生成密码重置令牌
+- **`hasRecentResetPasswordToken()`** (第1532行) - 检查是否有最近的重置令牌
+- **`getValidResetPasswordToken()`** (第1549行) - 获取有效的重置令牌
+- **`removeResetPasswordToken()`** (第1565行) - 删除重置令牌
+
+**Employee类中：**
+- **`stampResetPasswordToken()`** (第646行)
+- **`hasRecentResetPasswordToken()`** (第657行)
+- **`getValidResetPasswordToken()`** (第674行)
+- **`removeResetPasswordToken()`** (第690行)
+
+### 6. 加密和哈希函数
+
+**文件：** `/classes/Tools.php`
+- **`hash($passwd)`** (第1133行) - 密码哈希
+- **`getToken($page = true, ?Context $context = null)`** (第1158行) - 生成安全令牌
+- **`getAdminToken($string)`** (第1177行) - 生成管理员令牌
+
+### 7. 前端控制器认证函数
+
+**文件：** `/classes/controller/FrontController.php`
+- **`makeLoginForm()`** (第2000行) - 创建登录表单
+- **`isTokenValid()`** (第1080行) - 验证令牌有效性
+
+### 8. 管理员控制器认证函数
+
+**文件：** `/classes/controller/AdminController.php`
+- **`checkToken()`** (第795行) - 检查管理员令牌
+
+这些函数构成了一个完整的用户认证系统，涵盖了客户认证、员工认证、会话管理、密码重置、令牌验证等各个方面，确保了系统的安全性。
+A: 基于我的搜索结果，我现在可以为您总结所有在 PHP 中处理用户认证的函数。让我整理这些发现：
+
+## 所有 PHP 中处理用户认证的函数
+
+基于对文件的全面搜索，我找到了以下处理用户认证的主要函数：
+
+### 1. 客户（Customer）认证函数
+
+**文件：** `/classes/Customer.php`
+
+- **`checkPassword($idCustomer, $passwordHash)`** (第837行)
+  - 静态方法，验证客户密码哈希
+  - 检查客户ID有效性和密码匹配
+  - 使用缓存机制提高性能
+
+- **`getByEmail($email, $plaintextPassword = null, $ignoreGuest = true)`** (第457行)
+  - 通过邮箱获取客户实例，可选验证密码
+  - 使用加密服务验证明文密码
+  - 支持密码哈希升级机制
+
+- **`isLogged($withGuest = false)`** (第1374行)
+  - 检查客户是否已登录
+  - 验证会话有效性和密码匹配
+
+- **`logout()`** (第1393行)
+  - 客户登出功能
+  - 执行登出前后的钩子函数
+  - 清除cookie和会话信息
+
+- **`mylogout()`** (第1411行)
+  - 软登出，保留联盟信息
+  - 只清除客户相关信息
+
+### 2. 员工（Employee）认证函数
+
+**文件：** `/classes/Employee.php`
+
+- **`checkPassword($idEmployee, $passwordHash)`** (第358行)
+  - 静态方法，验证员工密码哈希
+  - 检查员工ID、密码和激活状态
+
+- **`getByEmail($email, $plaintextPassword = null, $activeOnly = true)`** (第285行)
+  - 通过邮箱获取员工实例，可选验证密码
+  - 包含防止密码枚举攻击的机制
+  - 支持密码哈希升级
+
+- **`isLoggedBack()`** (第439行)
+  - 检查员工是否已在后台登录
+  - 使用Symfony容器的用户提供者
+
+- **`logout()`** (第453行)
+  - 员工登出功能
+  - 清除cookie和Symfony会话
+
+### 3. Web服务认证函数
+
+**文件：** `/classes/webservice/WebserviceRequest.php`
+
+- **`authenticate()`** (第785行)
+  - Web服务API认证
+  - 验证32位认证密钥
+  - 检查密钥权限和激活状态
+
+### 4. Cookie和会话管理函数
+
+**文件：** `/classes/Cookie.php`
+
+- **`logout()`** (第247行)
+  - Cookie登出，完全销毁cookie
+  - 删除会话信息
+
+- **`mylogout()`** (第261行)
+  - 软登出，保留联盟信息
+  - 只删除客户相关cookie数据
+
+- **`registerSession(SessionInterface $session)`** (第502行)
+  - 注册用户会话
+  - 设置用户ID和会话令牌
+
+- **`isSessionAlive()`** (第547行)
+  - 检查会话是否有效和活跃
+  - 验证会话ID和令牌
+
+- **`deleteSession()`** (第525行)
+  - 删除会话记录
+
+### 5. 密码重置令牌函数
+
+**Customer类中：**
+- **`stampResetPasswordToken()`** (第1521行) - 生成密码重置令牌
+- **`hasRecentResetPasswordToken()`** (第1532行) - 检查是否有最近的重置令牌
+- **`getValidResetPasswordToken()`** (第1549行) - 获取有效的重置令牌
+- **`removeResetPasswordToken()`** (第1565行) - 删除重置令牌
+
+**Employee类中：**
+- **`stampResetPasswordToken()`** (第646行)
+- **`hasRecentResetPasswordToken()`** (第657行)
+- **`getValidResetPasswordToken()`** (第674行)
+- **`removeResetPasswordToken()`** (第690行)
+
+### 6. 加密和哈希函数
+
+**文件：** `/classes/Tools.php`
+- **`hash($passwd)`** (第1133行) - 密码哈希
+- **`getToken($page = true, ?Context $context = null)`** (第1158行) - 生成安全令牌
+- **`getAdminToken($string)`** (第1177行) - 生成管理员令牌
+
+### 7. 前端控制器认证函数
+
+**文件：** `/classes/controller/FrontController.php`
+- **`makeLoginForm()`** (第2000行) - 创建登录表单
+- **`isTokenValid()`** (第1080行) - 验证令牌有效性
+
+### 8. 管理员控制器认证函数
+
+**文件：** `/classes/controller/AdminController.php`
+- **`checkToken()`** (第795行) - 检查管理员令牌
+
+这些函数构成了一个完整的用户认证系统，涵盖了客户认证、员工认证、会话管理、密码重置、令牌验证等各个方面，确保了系统的安全性。
