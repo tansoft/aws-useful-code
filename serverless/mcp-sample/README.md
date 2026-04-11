@@ -55,26 +55,32 @@
 
 ### 配置 CloudPerf MCP 查询工具
 
-* 使用以下步骤配置agentcore gateway，可以使用aws_iam或s2s认证方式。
+CloudPerf 是一个自动网络质量分析工具 [https://github.com/tansoft/cloudperf](https://github.com/tansoft/cloudperf)，这里提供一个简易的MCP封装，可以方便地查询数据。
+
+使用以下步骤配置AgentCore Gateway，可以使用aws_iam或s2s认证方式进行调用。
 
 ```bash
 # 1.init env
 python3 -m venv .venv
 source .venv/bin/activate
+pip install boto3
 
-# 2.use aws_iam gateway
+# 2. Select authentication method
+# Option 2.1: use aws_iam gateway
 
-./utils/setup_agentcore_gateway_iam.sh s2s-gw
-./utils/add_gateway_target_native_lambda.sh cloudperf-mcp s2s-gw
+./utils/setup_agentcore_gateway_iam.sh iam-gw
+./utils/add_gateway_target_native_lambda.sh cloudperf iam-gw
 
-# or 2.use s2s gateway
+# Option 2.2. use s2s gateway
 
 ./utils/setup_cognito_s2s.sh us-east-1 s2s-gw
 ./utils/setup_agentcore_gateway.sh s2s-gw
-./utils/add_gateway_target_native_lambda.sh cloudperf-mcp s2s-gw
+./utils/add_gateway_target_native_lambda.sh cloudperf s2s-gw
 
-# 3.update code if mcp lambda need update
-./utils/update_lambda_code.sh cloudperf-mcp s2s-gw
+# Option: 3. update code if mcp lambda need update
+./utils/update_lambda_code.sh cloudperf iam-gw
+# or
+./utils/update_lambda_code.sh cloudperf s2s-gw
 
 ```
 
@@ -88,7 +94,7 @@ source .venv/bin/activate
 }
 ```
 
-* 在 Lambda mcp-cloudperf-mcp 中，增加以下环境变量，其中 CLOUDPERF_API_LAMBDA 指向您的 CloudPerf 部署的 API Lambda函数名字，如：
+* 在 Lambda mcp-cloudperf 中，增加以下环境变量，其中 CLOUDPERF_API_LAMBDA 指向您的 CloudPerf 部署的 API Lambda函数名字，如：
 
 ```text
 键：                     值：
@@ -113,10 +119,10 @@ CLOUDPERF_SECRET         cloudperf-mcp
     }
 ```
 
-* s2s 认证方式的 mcp 使用配置举例（通常给Quick Suite等s2s对接比较方便）：
+* s2s 认证方式的 mcp 使用配置举例（通常给Quick Suite等使用s2s方式对接mcp比较方便，根据setup_cognito_s2s.sh参数进行配置即可），mcp工具认证需要使用一个简单脚本实现：
 
 ```json
-    "cloudperf-mcp": {
+    "cloudperf-s2s": {
       "command": "bash",
       "args": [
         "/Users/xxxx/mcp-scripts/cloudperf-mcp-proxy.sh"
@@ -150,8 +156,16 @@ fi
 exec npx -y mcp-remote "$MCP_URL" --header "Authorization:Bearer ${ACCESS_TOKEN}"
 ```
 
+* 使用方法
+
+```bash
+使用cloudperf查询aws亚洲区域服务越南的效果
+新加坡区域服务东南亚各个国家的情况
+```
+
 ## Mcp Server 一键部署到 Lambda
 
+todo
 
 ## 参考
 
