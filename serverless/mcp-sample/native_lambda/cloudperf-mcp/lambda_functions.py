@@ -68,8 +68,12 @@ def lambda_handler(event, context):
         # Get the tool name from the context
         delimiter = "___"
         org_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
-        tool_name = org_tool_name[org_tool_name.index(delimiter) + len(delimiter)+4:] # 4="get_"
-
+        # find tool name and discard action (get_ or find_)
+        tool_name = org_tool_name.split(delimiter, 1)[1].split('_', 1)[1]
+        # hack for performance api with rawData=1 flag
+        if tool_name == "rawdata":
+            tool_name = "performance"
+            event["rawData"] = 1
         return call_cloudperf_with_token(tool_name, event)
     except Exception as e:
         logger.error(f"Handler error: {e!s}", exc_info=True)

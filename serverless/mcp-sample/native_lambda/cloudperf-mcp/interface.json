@@ -78,7 +78,7 @@
     "name": "get_asn"
   },
   {
-    "description": "获取网络性能详细数据，src和dist参数都需要逗号分隔的cityIds数据，如：1213020226,1643985005",
+    "description": "获取网络性能详细统计数据，src和dist参数都需要逗号分隔的cityIds数据，如：1213020226,1643985005",
     "inputSchema": {
       "properties": {
         "src": {
@@ -94,5 +94,66 @@
       "required": ["src","dist"]
     },
     "name": "get_performance"
+  },
+  {
+    "description": "获取2000条原始数据，用于获取详细网段信息，进行实时测试使用，src和dist参数都需要逗号分隔的cityIds数据，如：1213020226,1643985005",
+    "inputSchema": {
+      "properties": {
+        "src": {
+          "description": "get_cityset中指定cityset中的cityIds数据，逗号分隔，如：1213020226,1643985005",
+          "type": "string"
+        },
+        "dist": {
+          "description": "get_asn中的cityIds数据，默认只使用 asnType = 'isp' 的数据，如果有指定其他asnType则进行相应过滤",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": ["src","dist"]
+    },
+    "outputSchema": {
+      "properties": {
+        "dC": {
+          "description": "对应城市 - cityId",
+          "type": "string"
+        },
+        "dA": {
+          "description": "对应ASN(asn号码)",
+          "type": "string"
+        },
+        "dIP": {
+          "description": "起始IP - 结束IP",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_rawdata"
+  },
+  {
+    "description": "Find ISP Asn Info by keyword",
+    "inputSchema": {
+      "properties": {
+        "filter": {
+          "description": "filter keyword or ASN Number",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "find_asninfo"
+  },
+  {
+    "description": "Find IP Info",
+    "inputSchema": {
+      "properties": {
+        "ip": {
+          "description": "find ip information, e.g. 100.2.3.4",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "find_ipinfo"
   }
 ]

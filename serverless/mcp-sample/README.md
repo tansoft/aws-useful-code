@@ -159,7 +159,9 @@ exec npx -y mcp-remote "$MCP_URL" --header "Authorization:Bearer ${ACCESS_TOKEN}
 * 使用方法
 
 ```bash
-使用cloudperf查询aws亚洲区域服务越南的效果
+使用cloudperf查询18.235.213.1信息
+查询Amazon ASN信息
+查询aws亚洲区域服务越南的效果
 新加坡区域服务东南亚各个国家的情况
 ```
 
