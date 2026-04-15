@@ -38,8 +38,7 @@ class CachedStaticFiles(StaticFiles):
 # Initialize session directory
 SESSION_DIR = os.environ.get("SESSION_DIR", os.path.join(os.path.dirname(__file__), "sessions"))
 VALID_TOKEN = os.environ.get("VALID_TOKEN", "secret_token")
-# "apac.anthropic.claude-sonnet-4-20250514-v1:0"
-BEDROCK_MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+BEDROCK_MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-opus-4-6-v1")
 REGION_NAME = os.environ.get("REGION_NAME", "ap-northeast-1")
 PORT=int(os.environ.get("PORT", "9000"))
 
