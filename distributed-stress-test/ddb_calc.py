@@ -535,26 +535,26 @@ def create_calc_sheet(ws, rows):
 
     # 费用汇总
     ws.merge_cells(f'A{row}:D{row}')
-    ws[f'A{row}'] = "按需费用汇总"
+    ws[f'A{row}'] = "按需费用汇总(折后)"
     format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入按需费用"
-    ws[f'B{row}'] = f"=$B${base_row}*B{stats_row+1}*365/12"
-    ws[f'C{row}'] = f"=$B${base_row}*C{stats_row+1}*365/12"
-    ws[f'D{row}'] = f"=$B${base_row}*D{stats_row+1}*365/12"
+    ws[f'B{row}'] = f"=$B${base_row}*B{stats_row+1}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row}*C{stats_row+1}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row}*D{stats_row+1}*365/12*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "读取按需费用"
-    ws[f'B{row}'] = f"=$B${base_row+1}*B{stats_row+4}*365/12"
-    ws[f'C{row}'] = f"=$B${base_row+1}*C{stats_row+4}*365/12"
-    ws[f'D{row}'] = f"=$B${base_row+1}*D{stats_row+4}*365/12"
+    ws[f'B{row}'] = f"=$B${base_row+1}*B{stats_row+4}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row+1}*C{stats_row+4}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row+1}*D{stats_row+4}*365/12*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "存储费用"
-    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)"
-    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)"
-    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)"
+    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "总计"
@@ -563,37 +563,37 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-3}:D{row-1})"
     row += 1
 
-    ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
-    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
-    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
-    format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
-    row += 1
+    #ws[f'A{row}'] = "折前总计"
+    #ws[f'B{row}'] = f"=B{row-1}/(1-$G${base_row+2})"
+    #ws[f'C{row}'] = f"=C{row-1}/(1-$G${base_row+2})"
+    #ws[f'D{row}'] = f"=D{row-1}/(1-$G${base_row+2})"
+    format_range(ws, f"B{row-4}:D{row}", number_format='#,##0.00')
+    #row += 1
 
     row += 1
 
     # 预置费用汇总
     ws.merge_cells(f'A{row}:D{row}')
-    ws[f'A{row}'] = "预置费用汇总"
+    ws[f'A{row}'] = "预置费用汇总(折后)"
     format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入预置费用"
-    ws[f'B{row}'] = f"=$C${base_row}*$E${base_row+2}*B{stats_row+2}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row}*$E${base_row+2}*C{stats_row+2}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row}*$E${base_row+2}*D{stats_row+2}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row}*$E${base_row+2}*B{stats_row+2}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$C${base_row}*$E${base_row+2}*C{stats_row+2}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$C${base_row}*$E${base_row+2}*D{stats_row+2}*365/12*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "读取预置费用"
-    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+5}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+5}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+5}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+5}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+5}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+5}*365/12*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "存储费用"
-    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)"
-    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)"
-    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)"
+    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "总计"
@@ -602,49 +602,49 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-3}:D{row-1})"
     row += 1
 
-    ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
-    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
-    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
-    format_range(ws, f"B{row-5}:D{row}", number_format='#,##0.00')
-    row += 1
+    #ws[f'A{row}'] = "折前总计"
+    #ws[f'B{row}'] = f"=B{row-1}/(1-$G${base_row+2})"
+    #ws[f'C{row}'] = f"=C{row-1}/(1-$G${base_row+2})"
+    #ws[f'D{row}'] = f"=D{row-1}/(1-$G${base_row+2})"
+    format_range(ws, f"B{row-4}:D{row}", number_format='#,##0.00')
+    #row += 1
 
     row += 1
 
-    # 预留费用汇总
+    # 1年预留费用汇总
     ws.merge_cells(f'A{row}:D{row}')
-    ws[f'A{row}'] = "预留费用汇总"
+    ws[f'A{row}'] = "1年预留费用汇总(折后)"
     format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
     row += 1
 
     ws[f'A{row}'] = "写入预留费用"
-    ws[f'B{row}'] = f"=$E${base_row}*B{stats_row+3}*24*365/12+$G${base_row}*B{stats_row+3}/36"
-    ws[f'C{row}'] = f"=$E${base_row}*C{stats_row+3}*24*365/12+$G${base_row}*C{stats_row+3}/36"
-    ws[f'D{row}'] = f"=$E${base_row}*D{stats_row+3}*24*365/12+$G${base_row}*D{stats_row+3}/36"
+    ws[f'B{row}'] = f"=($D${base_row}*B{stats_row+3}*24*365/12+$F${base_row}*B{stats_row+3}/36)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($D${base_row}*C{stats_row+3}*24*365/12+$F${base_row}*C{stats_row+3}/36)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($D${base_row}*D{stats_row+3}*24*365/12+$F${base_row}*D{stats_row+3}/36)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "写入预置费用"
-    ws[f'B{row}'] = f"=$C${base_row}*($E${base_row+2}-B{stats_row+3})*B{stats_row+2}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row}*($E${base_row+2}-C{stats_row+3})*C{stats_row+2}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row}*($E${base_row+2}-D{stats_row+3})*D{stats_row+2}*365/12"
+    ws[f'B{row}'] = f"=($C${base_row}*($E${base_row+2}-B{stats_row+3})*B{stats_row+2}*365/12)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($C${base_row}*($E${base_row+2}-C{stats_row+3})*C{stats_row+2}*365/12)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($C${base_row}*($E${base_row+2}-D{stats_row+3})*D{stats_row+2}*365/12)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "读取预留费用"
-    ws[f'B{row}'] = f"=$E${base_row+1}*B{stats_row+7}*24*365/12+$G${base_row+1}*B{stats_row+7}/36"
-    ws[f'C{row}'] = f"=$E${base_row+1}*C{stats_row+7}*24*365/12+$G${base_row+1}*C{stats_row+7}/36"
-    ws[f'D{row}'] = f"=$E${base_row+1}*D{stats_row+7}*24*365/12+$G${base_row+1}*D{stats_row+7}/36"
+    ws[f'B{row}'] = f"=($D${base_row+1}*B{stats_row+7}*24*365/12+$F${base_row+1}*B{stats_row+7}/36)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($D${base_row+1}*C{stats_row+7}*24*365/12+$F${base_row+1}*C{stats_row+7}/36)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($D${base_row+1}*D{stats_row+7}*24*365/12+$F${base_row+1}*D{stats_row+7}/36)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "读取预置费用"
-    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+8}*365/12"
-    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+8}*365/12"
-    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+8}*365/12"
+    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+8}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+8}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+8}*365/12*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "存储费用"
-    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)"
-    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)"
-    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)"
+    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)*(1-$G${base_row+2})"
     row += 1
 
     ws[f'A{row}'] = "总计"
@@ -653,12 +653,63 @@ def create_calc_sheet(ws, rows):
     ws[f'D{row}'] = f"=sum(D{row-5}:D{row-1})"
     row += 1
 
-    ws[f'A{row}'] = "折后总计"
-    ws[f'B{row}'] = f"=B{row-1}*(1-$G${base_row+2})"
-    ws[f'C{row}'] = f"=C{row-1}*(1-$G${base_row+2})"
-    ws[f'D{row}'] = f"=D{row-1}*(1-$G${base_row+2})"
-    format_range(ws, f"B{row-7}:D{row}", number_format='#,##0.00')
+    #ws[f'A{row}'] = "折前总计"
+    #ws[f'B{row}'] = f"=B{row-1}/(1-$G${base_row+2})"
+    #ws[f'C{row}'] = f"=C{row-1}/(1-$G${base_row+2})"
+    #ws[f'D{row}'] = f"=D{row-1}/(1-$G${base_row+2})"
+    format_range(ws, f"B{row-6}:D{row}", number_format='#,##0.00')
+    #row += 1
+
     row += 1
+
+    # 3年预留费用汇总
+    ws.merge_cells(f'A{row}:D{row}')
+    ws[f'A{row}'] = "3年预留费用汇总(折后)"
+    format_range(ws, f'A{row}', bg_color="366092", font_color="FFFFFF", bold=True)
+    row += 1
+
+    ws[f'A{row}'] = "写入预留费用"
+    ws[f'B{row}'] = f"=($E${base_row}*B{stats_row+3}*24*365/12+$G${base_row}*B{stats_row+3}/36)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($E${base_row}*C{stats_row+3}*24*365/12+$G${base_row}*C{stats_row+3}/36)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($E${base_row}*D{stats_row+3}*24*365/12+$G${base_row}*D{stats_row+3}/36)*(1-$G${base_row+2})"
+    row += 1
+
+    ws[f'A{row}'] = "写入预置费用"
+    ws[f'B{row}'] = f"=($C${base_row}*($E${base_row+2}-B{stats_row+3})*B{stats_row+2}*365/12)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($C${base_row}*($E${base_row+2}-C{stats_row+3})*C{stats_row+2}*365/12)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($C${base_row}*($E${base_row+2}-D{stats_row+3})*D{stats_row+2}*365/12)*(1-$G${base_row+2})"
+    row += 1
+
+    ws[f'A{row}'] = "读取预留费用"
+    ws[f'B{row}'] = f"=($E${base_row+1}*B{stats_row+7}*24*365/12+$G${base_row+1}*B{stats_row+7}/36)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=($E${base_row+1}*C{stats_row+7}*24*365/12+$G${base_row+1}*C{stats_row+7}/36)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=($E${base_row+1}*D{stats_row+7}*24*365/12+$G${base_row+1}*D{stats_row+7}/36)*(1-$G${base_row+2})"
+    row += 1
+
+    ws[f'A{row}'] = "读取预置费用"
+    ws[f'B{row}'] = f"=$C${base_row+1}*B{stats_row+8}*365/12*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$C${base_row+1}*C{stats_row+8}*365/12*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$C${base_row+1}*D{stats_row+8}*365/12*(1-$G${base_row+2})"
+    row += 1
+
+    ws[f'A{row}'] = "存储费用"
+    ws[f'B{row}'] = f"=$B${base_row+2}*(B{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'C{row}'] = f"=$B${base_row+2}*(C{stats_row}-25)*(1-$G${base_row+2})"
+    ws[f'D{row}'] = f"=$B${base_row+2}*(D{stats_row}-25)*(1-$G${base_row+2})"
+    row += 1
+
+    ws[f'A{row}'] = "总计"
+    ws[f'B{row}'] = f"=sum(B{row-5}:B{row-1})"
+    ws[f'C{row}'] = f"=sum(C{row-5}:C{row-1})"
+    ws[f'D{row}'] = f"=sum(D{row-5}:D{row-1})"
+    row += 1
+
+    #ws[f'A{row}'] = "折前总计"
+    #ws[f'B{row}'] = f"=B{row-1}/(1-$G${base_row+2})"
+    #ws[f'C{row}'] = f"=C{row-1}/(1-$G${base_row+2})"
+    #ws[f'D{row}'] = f"=D{row-1}/(1-$G${base_row+2})"
+    format_range(ws, f"B{row-6}:D{row}", number_format='#,##0.00')
+    #row += 1
 
     # 格式化
     for i in range(ord('A'), ord('J')):
