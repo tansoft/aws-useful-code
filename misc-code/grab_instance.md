@@ -100,7 +100,7 @@ python grab_instance.py --region us-east-1 --az use1-az6 --dry-run capacity-bloc
 python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge --dry-run capacity-block --duration 48
 
 # 多区域搜索 Capacity Block
-python grab_instance.py --region us-east-1,us-west-2 --instance-type p5.48xlarge capacity-block --duration 24 --auto-purchase
+python grab_instance.py --region us-east-1,us-east-2,us-west-2 --instance-type p4d.24xlarge,p4de.24xlarge,p5.48xlargqe,p5e.48xlarge,p5en.48xlarge capacity-block --duration 24 --auto-purchase
 
 # 自动购买第一个可用 offering（配合重试循环抢资源）
 python grab_instance.py --region us-east-1 --interval 30 capacity-block --duration 24 --auto-purchase
