@@ -26,10 +26,16 @@ def resolve_azs(ec2, az_name_or_id=None, include_local_zones=False):
     all_azs = get_all_azs(ec2, include_local_zones)
     if not az_name_or_id:
         return all_azs
-    for z in all_azs:
-        if az_name_or_id in z:
-            return [z]
-    return []
+    
+    # Support comma-separated AZs
+    az_list = [a.strip() for a in az_name_or_id.split(',')]
+    result = []
+    for az in az_list:
+        for z in all_azs:
+            if az in z:
+                result.append(z)
+                break
+    return result
 
 
 def find_subnet_in_az(ec2, az_name):
@@ -270,10 +276,12 @@ def run_capacity_block(args):
                     CapacityBlockOfferingId=offering_id,
                     InstancePlatform="Linux/UNIX",
                 )
-                cb = purchase_resp.get("CapacityBlock", purchase_resp)
+                cb = purchase_resp.get("CapacityReservation", {})
+                cb_id = cb.get("CapacityReservationId", "N/A")
+                cb_state = cb.get("State", "N/A")
                 print(f"SUCCESS! Capacity Block purchased in {region}.")
-                print(f"  ID: {cb.get('CapacityBlockId', 'N/A')}")
-                print(f"  State: {cb.get('State', 'N/A')}")
+                print(f"  ID: {cb_id}")
+                print(f"  State: {cb_state}")
                 return
             except ClientError as e:
                 code = e.response["Error"]["Code"]
@@ -412,7 +420,7 @@ Examples:
     )
     # Common args
     parser.add_argument("--region", required=True, help="AWS region(s), comma-separated (e.g. us-east-1 or us-east-1,us-west-2)")
-    parser.add_argument("--az", default=None, help="AZ name or ID (e.g. us-east-1e or use1-az5). If omitted, tries all AZs")
+    parser.add_argument("--az", default=None, help="AZ name or ID, comma-separated (e.g. us-east-1e or use1-az5,use1-az6). If omitted, tries all AZs")
     parser.add_argument("--instance-type", default="p5.4xlarge", help="EC2 instance type(s), comma-separated (e.g. p4d.24xlarge,p5.48xlarge)")
     parser.add_argument("--interval", type=int, default=10, help="Retry interval seconds (default: 10)")
     parser.add_argument("--max-retries", type=int, default=0, help="Max retries, 0=unlimited")

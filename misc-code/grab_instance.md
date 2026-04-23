@@ -7,6 +7,7 @@
 ```bash
 pip install boto3
 aws configure  # 确保 AWS credentials 已配置
+wget https://raw.githubusercontent.com/tansoft/aws-useful-code/refs/heads/main/misc-code/grab_instance.py
 ```
 
 确认目标机型的 Service Quota 足够（EC2 控制台 → Service Quotas → Running On-Demand P instances）。
@@ -94,7 +95,7 @@ python grab_instance.py --region us-east-1 --instance-type p5.48xlarge --dry-run
 
 ```bash
 # 搜索可用 offering（只看不买）
-python grab_instance.py --region us-east-1 --az use1-az6 --dry-run capacity-block --duration 24
+python grab_instance.py --region us-east-1 --az use1-az1,use1-az6 --dry-run capacity-block --duration 24
 
 # 指定机型，遍历所有 AZ
 python grab_instance.py --region us-east-1 --instance-type p5e.48xlarge --dry-run capacity-block --duration 48
