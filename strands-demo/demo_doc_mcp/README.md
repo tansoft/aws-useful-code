@@ -17,7 +17,7 @@
 
 - **后端**：FastAPI 0.117.1, Uvicorn 0.36.0
 - **AI 框架**：Strands 0.1.0
-- **AI 模型**：AWS Bedrock Claude Sonnet 4 (`apac.anthropic.claude-sonnet-4-20250514-v1:0`)
+- **AI 模型**：AWS Bedrock Claude Opus 4.6 (`global.anthropic.claude-opus-4-6-v1`)
 - **会话存储**：文件存储，自动摘要
 - **前端**：静态 HTML/CSS/JS，Bootstrap 5
 
@@ -37,6 +37,12 @@
 - 必需的环境变量
 
 ## 安装步骤
+
+### Lambda部署
+
+本项目可以直接部署在Lambda上，实现 Serverless 部署，详见：[lambda/README.md](lambda/README.md)
+
+### 本地安装
 
 1. **进入项目目录**
    ```bash
